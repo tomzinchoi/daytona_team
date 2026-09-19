@@ -1,0 +1,21 @@
+{
+  "name": "workload-benchmark-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend-only workload benchmark screening and measured optimization MVP",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./types": { "types": "./dist/shared/types.d.ts", "import": "./dist/shared/types.js" }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test \".test-build/tests/*.test.js\"",
+    "start": "node dist/server.js"
+  },
+  "engines": { "node": ">=22" },
+  "devDependencies": { "@types/node": "24.10.0", "typescript": "5.9.3" }
+}

@@ -1,0 +1,8 @@
+{
+  "architectures": [
+    { "id": "qwen-single", "agents": [{ "model": "qwen3-4b", "role": "Solve the task. Return only the requested answer." }] },
+    { "id": "deepseek-single", "agents": [{ "model": "deepseek-r1-distill-qwen-7b", "role": "Solve the task. Return only the requested answer." }] },
+    { "id": "gemma-single", "agents": [{ "model": "gemma-3-4b", "role": "Solve the task. Return only the requested answer." }] }
+  ],
+  "benchmarkCases": [{ "id": "arithmetic-json", "task": "Return exactly a JSON object with key answer and numeric value equal to 6 multiplied by 7. No markdown or extra keys.", "evaluator": { "type": "json_exact", "expected": { "answer": 42 } } }]
+}

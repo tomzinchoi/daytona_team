@@ -1,0 +1,28 @@
+{
+  "name": "architecture-benchmark-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file-if-exists=.env dist/src/server.js",
+    "test": "tsx --test test/*.test.ts",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "smoke:daytona": "node --env-file-if-exists=.env --import tsx scripts/daytona-smoke.ts",
+    "snapshot:create": "node --env-file-if-exists=.env --import tsx scripts/create-snapshot.ts"
+  },
+  "dependencies": {
+    "@daytona/sdk": "0.214.0",
+    "fastify": "5.12.5",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.1",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
+  }
+}

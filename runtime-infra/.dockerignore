@@ -1,0 +1,6 @@
+*
+!infra/
+!infra/Dockerfile
+!infra/model-manifest.py
+!models/
+!models/*.gguf
