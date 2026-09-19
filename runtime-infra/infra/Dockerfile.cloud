@@ -1,0 +1,20 @@
+# Build once, push, register by digest, and reuse one immutable Daytona snapshot.
+FROM node:22-bookworm-slim AS build
+ARG LLAMA_CPP_COMMIT=b23701f77d47dad9de834d59ebfcbe25c9e8b46f
+RUN apt-get update && apt-get install -y --no-install-recommends git cmake build-essential ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN git init /src/llama && cd /src/llama && git remote add origin https://github.com/ggml-org/llama.cpp.git && git fetch --depth 1 origin "$LLAMA_CPP_COMMIT" && git checkout --detach FETCH_HEAD
+RUN cmake -S /src/llama -B /src/llama/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_CUDA=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_APP=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DBUILD_SHARED_LIBS=OFF && cmake --build /src/llama/build --target llama-server -j 4
+
+FROM node:22-bookworm-slim
+ARG LLAMA_CPP_COMMIT=b23701f77d47dad9de834d59ebfcbe25c9e8b46f
+RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates libgomp1 curl && rm -rf /var/lib/apt/lists/*
+RUN useradd --create-home --shell /bin/bash daytona && mkdir -p /opt/models /opt/llama/bin
+COPY --from=build /src/llama/build/bin/llama-server /opt/llama/bin/llama-server
+RUN curl --fail --location --retry 3 --max-time 1200 'https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf' -o /opt/models/qwen3-4b.gguf && echo '7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5  /opt/models/qwen3-4b.gguf' | sha256sum -c -
+RUN curl --fail --location --retry 3 --max-time 1200 'https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/361004151d4f4f6b446dc5e6d46fbf4422a80d5f/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf' -o /opt/models/deepseek-r1-distill-qwen-7b.gguf && echo '731ece8d06dc7eda6f6572997feb9ee1258db0784827e642909d9b565641937b  /opt/models/deepseek-r1-distill-qwen-7b.gguf' | sha256sum -c -
+RUN curl --fail --location --retry 3 --max-time 1200 'https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF/resolve/71506238f970075ca85125cd749c28b1b0eee84e/google_gemma-3-4b-it-Q4_K_M.gguf' -o /opt/models/gemma-3-4b.gguf && echo '4996030242583a40aa151ff93f49ed787ac8c25e4120c3ae4588b2e2a7d1ae94  /opt/models/gemma-3-4b.gguf' | sha256sum -c -
+COPY model-manifest.py /tmp/model-manifest.py
+RUN python3 /tmp/model-manifest.py "$LLAMA_CPP_COMMIT" && chmod -R a-w /opt/models /opt/llama
+USER daytona
+WORKDIR /home/daytona
+CMD ["sleep", "infinity"]

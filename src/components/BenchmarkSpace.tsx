@@ -1,7 +1,8 @@
-import { Component, Suspense, lazy, useState, type ReactNode } from "react";
+import { Component, Suspense, lazy, useMemo, useState, type ReactNode } from "react";
 import { Box, FlaskConical, RotateCcw, Maximize2, Move, Scan } from "lucide-react";
 import { plottableConfigurations, resourceLabel, type Configuration, type Snapshot } from "../domain";
 import ComparisonTable from './ComparisonTable';
+import ModelInsight from './ModelInsight';
 import { labelKo } from '../labels';
 const Scene = lazy(() => import("./Scene"));
 class SceneBoundary extends Component<
@@ -113,30 +114,37 @@ export default function BenchmarkSpace({
   selected,
   onSelect,
   source,
+  resourceAxis,
 }: {
   configurations: Configuration[];
   selected: string;
   onSelect: (id: string) => void;
   source: Snapshot["source"];
+  resourceAxis?: string;
 }) {
   const [mode, setMode] = useState<"3d" | "2d">("2d");
   const [failed, setFailed] = useState(false);
   const [resetKey, setReset] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const [hover, setHover] = useState<Configuration | null>(null);
-  const configurations = plottableConfigurations(suppliedConfigurations, source);
+  const configurations = useMemo(() => plottableConfigurations(suppliedConfigurations, source), [suppliedConfigurations, source]);
+  const running = suppliedConfigurations.some(c => ["provisioning", "running", "evaluating"].includes(c.status));
+  const failedRun = suppliedConfigurations.some(c => c.status === "failed");
+  const inspected = configurations.find(c => c.id === selected) ?? configurations[0];
   if (configurations.length === 0) return (
     <section className="space panel evidence-empty" aria-label="벤치마크 결과 대기">
-      <span className="eyebrow">아직 워크로드를 실행하지 않았습니다</span>
+      <span className="eyebrow">{running ? "실제 실행 상태를 확인하고 있습니다" : failedRun ? "실행 오류를 확인해 주세요" : "아직 측정 결과가 없습니다"}</span>
       <FlaskConical size={36} aria-hidden="true" />
-      <h2>벤치마크 결과가 없습니다.</h2>
-      <p>{suppliedConfigurations.length > 0
+      <h2>{running ? "벤치마크 실행 중입니다." : failedRun ? "측정 결과를 얻지 못했습니다." : "벤치마크 결과가 없습니다."}</h2>
+      <p>{running ? "환경 준비·모델 실행·평가를 진행하고 있습니다. 측정이 완료된 구성부터 성능표에 표시합니다."
+        : failedRun ? "실행에 실패해 성능을 표시할 수 없습니다. 실행 단계의 오류 내용을 확인해 주세요."
+        : suppliedConfigurations.length > 0
         ? "아키텍처 후보만 탐색했습니다. 후보 선정에 사용한 추정치는 실제 벤치마크 성능이 아닙니다."
         : "워크로드 실행과 평가가 끝나면 성능을 비교할 수 있습니다. 아직 점수나 실행 시간을 측정하지 않았습니다."}</p>
       <dl className="unmeasured-metrics">
         <div><dt>작업 품질</dt><dd>미측정</dd></div>
         <div><dt>지연 시간</dt><dd>미측정</dd></div>
-        <div><dt>테스트</dt><dd>미실행</dd></div>
+        <div><dt>테스트</dt><dd>{running ? "결과 대기" : failedRun ? "결과 없음" : "미실행"}</dd></div>
       </dl>
     </section>
   );
@@ -193,9 +201,10 @@ export default function BenchmarkSpace({
           </button>
         </div>
       </header>
+      <div className={mode === '3d' && !failed ? 'three-workbench' : ''}>
       <div className={`plot ${mode === '2d' || failed ? 'table-mode' : 'three-mode'}`}>
         <div className="plot-caption">
-          <span className="eyebrow">품질 · 지연 시간 · 자원 사용량</span>
+          <span className="eyebrow">품질 · 지연 시간 · {resourceAxis ?? '자원 사용량'}</span>
           <p>막대 하나가 하나의 AI 구성입니다.</p>
         </div>
         <span className="plot-source">
@@ -250,6 +259,9 @@ export default function BenchmarkSpace({
           <Scan size={12} />
         </div>
       </div>
+      {mode === '3d' && !failed && inspected && <ModelInsight config={inspected} />}
+      </div>
+      {mode === '3d' && !failed && <div className="model-selector" aria-label="3D 모델 선택">{configurations.map(c => <button key={c.id} aria-pressed={selected === c.id} onClick={() => onSelect(c.id)}><span>#{c.id}</span>{c.name}<strong>{c.quality}%</strong></button>)}</div>}
       <footer className="space-footer">
         <div className="legend">
           <span>

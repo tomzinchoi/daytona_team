@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -20,6 +20,8 @@ import {
   Zap,
 } from "lucide-react";
 import BenchmarkSpace from "./components/BenchmarkSpace";
+import { ACTIVE_MODELS, isActiveModel } from './active-models';
+import AnalysisProgress from "./components/AnalysisProgress";
 import WorkloadUpload from "./components/WorkloadUpload";
 import { composeWorkload, type WorkloadFile } from "./workload-files";
 import { labelKo } from "./labels";
@@ -28,6 +30,7 @@ import ConfigurationDetail, {
   Selection,
 } from "./components/ConfigurationDetail";
 import { benchmarkApi, apiConfigured } from "./api/client";
+import { experimentApi } from "./api/experiments";
 import {
   getProviderReports,
   searchEngineExample,
@@ -41,7 +44,9 @@ import {
   type Snapshot,
 } from "./domain";
 
+const HumanEvalResults = lazy(() => import('./components/HumanEvalResults'));
 type Screen =
+  | "humaneval"
   | "workload"
   | "search"
   | "benchmark"
@@ -55,6 +60,7 @@ const navigation: {
   icon: typeof Box;
   number: string;
 }[] = [
+  { id: "humaneval", label: "팀 실측 기록", icon: FlaskConical, number: "NEW" },
   { id: "workload", label: "워크로드", icon: Terminal, number: "01" },
   { id: "search", label: "아키텍처 탐색", icon: GitBranch, number: "02" },
   {
@@ -78,6 +84,7 @@ export default function App() {
   const [workload, setWorkload] = useState("");
   const [files, setFiles] = useState<WorkloadFile[]>([]);
   const [readingFiles, setReadingFiles] = useState(false);
+  const [uploadGeneration, setUploadGeneration] = useState(0);
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot);
   const [selectedId, setSelectedId] = useState("");
   const [production, setProduction] = useState<Configuration | null>(null);
@@ -90,7 +97,22 @@ export default function App() {
     ProviderReport[] | null
   >(null);
   const [providerError, setProviderError] = useState("");
+  const [providerBusy, setProviderBusy] = useState(false);
+  const providerRequest = useRef(false);
   const generation = useRef(0);
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get('experiment');
+    if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return;
+    let cancelled = false;
+    experimentApi.get(id).then(result => {
+      if (cancelled) return;
+      if (result.configurations.some(c => c.topology.some(node => !isActiveModel(node.model))))
+        throw new Error('현재 화면은 팀이 설정한 Gemma 4 E2B, Qwen 3.5 9B, GPT-OSS 20B 결과만 표시합니다.');
+      setSnapshot(result); setWorkload(result.workload); setRunStarted(true);
+      setSelectedId(result.configurations.find(c => c.evidence === 'measured')?.id ?? result.configurations[0]?.id ?? ''); setScreen(result.phase);
+    }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : '저장된 실험을 불러오지 못했습니다.'); });
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     if (!showProtocol) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -149,6 +171,9 @@ export default function App() {
   }));
 
   async function refreshProviders() {
+    if (providerRequest.current) return;
+    providerRequest.current = true;
+    setProviderBusy(true);
     setProviderError("");
     try {
       setProviderReports(await getProviderReports());
@@ -157,17 +182,26 @@ export default function App() {
       setProviderError(
         "런타임 상태를 조회할 수 없습니다. 실행 서비스 연결을 확인해 주세요.",
       );
+    } finally {
+      providerRequest.current = false;
+      setProviderBusy(false);
     }
+  }
+  function providerLabel(report?: ProviderReport) {
+    if (providerBusy) return "확인 중…";
+    if (providerError) return "조회 실패";
+    if (!report) return providerReports ? "상태 없음" : "확인 전";
+    return report.status === "LIVE" ? "연결됨" : report.status === "ERROR" ? "오류" : "연결 안 됨";
   }
   async function beginEngine() {
     const token = ++generation.current;
     setBusy(true);
     setError("");
     try {
-      const result = await searchEngineExample();
+      const result = await experimentApi.create();
       if (token !== generation.current) return;
       setSnapshot(result);
-      setWorkload(result.workload);
+      history.replaceState(null, "", `?experiment=${result.id}`);
       setSelectedId(result.configurations[0].id);
       setProduction(null);
       setRunStarted(true);
@@ -187,10 +221,10 @@ export default function App() {
     const token = generation.current;
     async function poll() {
       try {
-        const next = await benchmarkApi.get(snapshot.id);
+        const next = await (snapshot.integration === "runtime-workload" ? experimentApi.get(snapshot.id) : benchmarkApi.get(snapshot.id));
         if (cancelled || token !== generation.current) return;
         setSnapshot(next);
-        if (next.phase === "results") setScreen("results");
+        if (next.phase === "results") setScreen(current => current === "benchmark" ? "results" : current);
         else timer = setTimeout(poll, 2000);
       } catch (e) {
         if (!cancelled && token === generation.current) {
@@ -206,7 +240,7 @@ export default function App() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [demo, snapshot.id, snapshot.phase, pollingStopped]);
+  }, [demo, snapshot.id, snapshot.phase, snapshot.integration, pollingStopped]);
 
   async function begin(useDemo: boolean) {
     let value: string;
@@ -227,7 +261,6 @@ export default function App() {
         : await benchmarkApi.create(value);
       if (token !== generation.current) return;
       setSnapshot(result);
-      setWorkload(value);
       setRunStarted(true);
       setSelectedId(
         result.configurations.find((c) => c.selectedForBenchmark)?.id ??
@@ -267,7 +300,7 @@ export default function App() {
     }
     setBusy(true);
     try {
-      const next = await benchmarkApi.start(snapshot.id);
+      const next = await (snapshot.integration === "runtime-workload" ? experimentApi.start(snapshot.id) : benchmarkApi.start(snapshot.id));
       if (token === generation.current) {
         setSnapshot(next);
         setScreen(next.phase);
@@ -286,6 +319,7 @@ export default function App() {
   }
   function reset() {
     generation.current++;
+    history.replaceState(null, "", location.pathname);
     setSnapshot(emptySnapshot());
     setSelectedId("");
     setScreen("workload");
@@ -293,6 +327,8 @@ export default function App() {
     setProduction(null);
     setWorkload("");
     setFiles([]);
+    setUploadGeneration(value => value + 1);
+    setReadingFiles(false);
     setError("");
     setBusy(false);
     setPollingStopped(false);
@@ -305,6 +341,7 @@ export default function App() {
   function canVisit(id: Screen) {
     return (
       id === "workload" ||
+      id === "humaneval" ||
       id === "providers" ||
       (id === "selection" && Boolean(production)) ||
       (runStarted &&
@@ -315,6 +352,7 @@ export default function App() {
     );
   }
   const headings: Record<Screen, [string, string]> = {
+    humaneval: ["같은 문제, 세 모델의 실제 기록.", "팀 백엔드의 HumanEval 결과를 문제별로 비교하고 새 실행 기록을 불러오세요."],
     workload: [
       "배포 전에, 내 작업으로 검증하세요.",
       "내 워크로드에 맞는 오픈 모델과 실행 구성을 비교하세요.",
@@ -390,9 +428,7 @@ export default function App() {
             <span className="status-dot" />
             <span> Daytona 런타임 </span>
             <small>
-              {providerReports?.find((p) => p.id === "daytona")?.status === "LIVE"
-                ? "연결됨"
-                : "확인 전"}
+              {providerLabel(providerReports?.find((p) => p.id === "daytona"))}
             </small>
           </div>
           <p> 추측은 줄이고, <br /> 더 나은 구성을 선택하세요. </p>
@@ -407,7 +443,7 @@ export default function App() {
           <div className="topbar-right">
             <span className={`badge ${demo ? "demo" : "api"}`}>
               <span className="status-dot" />
-              {snapshot.source === "empty" ? "아직 실행하지 않음" : demo ? "데모 미리보기" : snapshot.integration === "engine-screening" ? "후보 탐색 · 미실행" : "API 데이터"}
+              {screen === "humaneval" ? "저장된 실행 기록" : snapshot.source === "empty" ? "아직 실행하지 않음" : demo ? "데모 미리보기" : snapshot.integration === "engine-screening" ? "후보 탐색 · 미실행" : "API 데이터"}
             </span>
             <span className="avatar">AW</span>
           </div>
@@ -420,11 +456,11 @@ export default function App() {
               <h1>{headings[screen][0]}</h1>
               <p>{headings[screen][1]}</p>
             </div>
-            <button
+            {screen !== "humaneval" && <button
               className="text-button"
               onClick={() => setShowProtocol(true)}
             > 평가 기준 <ArrowUpRight size={14} />
-            </button>
+            </button>}
           </div>
           {error && (
             <div className="error-banner" role="alert">
@@ -442,7 +478,7 @@ export default function App() {
               </button>
             </div>
           )}
-          {demo && (
+          {demo && screen !== "humaneval" && (
             <div className="demo-strip">
               <span>
                 <span className="status-dot" />
@@ -459,6 +495,9 @@ export default function App() {
             </div>
           )}
 
+          {(busy || (!demo && snapshot.phase === 'benchmark' && !pollingStopped)) && <AnalysisProgress running={snapshot.phase === 'benchmark'} />}
+          {snapshot.warnings && snapshot.warnings.length > 0 && <div className="evidence-warnings" role="status">{snapshot.warnings.map((warning, i) => <p key={i}>{warning}</p>)}</div>}
+          {screen === "humaneval" && <Suspense fallback={<p role="status">팀 실행 기록을 불러오는 중…</p>}><HumanEvalResults /></Suspense>}
           {screen === "workload" && (
             <>
               <div className="workload-grid">
@@ -485,46 +524,34 @@ export default function App() {
                       placeholder="수행할 작업, 원하는 결과, 성공 기준을 입력하세요…"
                       maxLength={100000}
                     />
-                    <WorkloadUpload files={files} onChange={setFiles} onReading={setReadingFiles} />
+                    <WorkloadUpload key={uploadGeneration} files={files} onChange={setFiles} onReading={setReadingFiles} />
                     <button
                       className="button primary full"
                       type="submit"
                       disabled={busy || readingFiles}
                     >
-                      {busy ? "연결 중…" : "내 워크로드 분석"}
+                      {busy ? "분석 처리 중…" : "내 워크로드 분석"}
                       <ArrowRight size={16} />
                     </button>
                   </form>
                   <div className="or-rule">
-                    <span /> 선택 사항 · 실제 실행 없는 UI 데모 <span />
+                    <span /> 팀원이 실행한 벤치마크 <span />
                   </div>
-                  <button
-                    className="demo-example"
-                    onClick={() => void begin(true)}
-                    disabled={busy}
-                  >
-                    <span className="example-icon">
-                      <Terminal size={19} />
-                    </span>
-                    <span>
-                      <strong> 데모 미리보기: 저장소 버그 수정 </strong>
-                      <small>{DEMO_WORKLOAD}</small>
-                    </span>
+                  <button className="demo-example" onClick={() => setScreen("humaneval")}>
+                    <span className="example-icon"><FlaskConical size={19} /></span>
+                    <span><strong>Nosana × Daytona 실측 기록 보기</strong><small>Gemma 4 E2B · Qwen 3.5 9B · GPT-OSS 20B의 저장된 실행 결과</small></span>
                     <ArrowUpRight size={16} />
                   </button>
-                  <button
-                    className="engine-example text-button"
-                    onClick={() => void beginEngine()}
-                    disabled={busy}
-                  > 엔진의 코딩 워크로드 탐색 <ArrowUpRight size={13} />
-                  </button>
-                  <p className="workload-explanation"> 실제 워크로드 실행은 아직 화면과 연결되지 않았습니다. 데모는 화면을 설명하기 위한 가상 수치입니다. </p>
+                  <div className="or-rule"><span /> 이번 데모의 실행 모델 · 3개 <span /></div>
+                  <ul aria-label="실제 실행 모델">{ACTIVE_MODELS.map(model => <li key={model.id}>{model.name} <code>{model.model}</code></li>)}</ul>
+                  <p className="workload-explanation">비교 대상은 위 세 모델뿐입니다. 저장된 실행 기록을 확인할 수 있으며, 아직 실행하지 않은 워크로드의 성능은 표시하지 않습니다.</p>
                 </section>
                 <BenchmarkSpace
                   configurations={snapshot.configurations}
                   selected={selected?.id ?? ""}
                   onSelect={setSelectedId}
                   source={snapshot.source}
+                  resourceAxis={snapshot.resourceAxis}
                 />
               </div>
               <div className="principles">
@@ -646,6 +673,7 @@ export default function App() {
                   selected={selected.id}
                   onSelect={setSelectedId}
                   source={snapshot.source}
+                  resourceAxis={snapshot.resourceAxis}
                 />
                 <ConfigurationDetail
                   config={selected}
@@ -718,7 +746,7 @@ export default function App() {
                           />
                         ))}
                       </div>
-                      <small>{c.error ?? c.compute}</small>
+                      <small>{c.error ?? c.compute}</small>{c.progress && <p className="case-progress">케이스 {c.progress.completed} / {c.progress.total} 완료{c.progress.currentCase ? ` · ${c.progress.currentCase}` : ""}</p>}
                     </article>
                   ))}
                 </div>
@@ -733,6 +761,7 @@ export default function App() {
                   selected={selected.id}
                   onSelect={setSelectedId}
                   source={snapshot.source}
+                  resourceAxis={snapshot.resourceAxis}
                 />
                 <ConfigurationDetail
                   config={selected}
@@ -751,6 +780,7 @@ export default function App() {
                   selected={selected.id}
                   onSelect={setSelectedId}
                   source={snapshot.source}
+                  resourceAxis={snapshot.resourceAxis}
                 />
                 <ConfigurationDetail
                   config={selected}
@@ -876,8 +906,9 @@ export default function App() {
                 </p>
                 <button
                   className="button secondary"
+                  disabled={providerBusy}
                   onClick={() => void refreshProviders()}
-                > 연결 상태 확인 <Radio size={14} />
+                > {providerBusy ? "연결 확인 중…" : "연결 상태 확인"} <Radio size={14} />
                 </button>
               </div>
               <section className="provider-grid">
@@ -885,7 +916,7 @@ export default function App() {
                   const report = providerReports?.find(
                     (r) => r.id.toLowerCase() === p.name.toLowerCase(),
                   );
-                  const connected = report?.status === "LIVE";
+                  const connected = !providerBusy && !providerError && report?.status === "LIVE";
                   return (
                     <article className="provider-card panel" key={p.name}>
                       <span className="provider-logo">
@@ -897,11 +928,7 @@ export default function App() {
                         className={`badge ${connected ? "api" : "offline"}`}
                       >
                         <span className="status-dot" />
-                        {connected
-                          ? "연결됨"
-                          : report?.status === "ERROR"
-                            ? "오류"
-                            : "연결 안 됨"}
+                        {providerLabel(report)}
                       </span>
                       <p>
                         {report?.reason ??

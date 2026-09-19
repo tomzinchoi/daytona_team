@@ -1,5 +1,12 @@
 export interface WorkloadFile { name: string; content: string; size: number }
 export const FILE_ACCEPT = '.txt,.md,.csv,.json,.js,.ts,.py';
+export function mergeWorkloadFiles(existing: WorkloadFile[], added: WorkloadFile[]): WorkloadFile[] {
+  const files = [...existing, ...added];
+  if (files.length > 5) throw new Error('파일은 최대 5개까지 첨부할 수 있습니다.');
+  if (files.reduce((sum, file) => sum + file.size, 0) > 500_000) throw new Error('전체 파일 크기는 500KB 이하여야 합니다.');
+  if (new Set(files.map(file => file.name)).size !== files.length) throw new Error('같은 이름의 파일이 이미 첨부되어 있습니다. 기존 파일을 삭제한 뒤 다시 추가해 주세요.');
+  return files;
+}
 export async function readWorkloadFiles(files: File[]): Promise<WorkloadFile[]> {
   if (!files.length || files.length > 5) throw new Error('파일은 한 번에 1~5개까지 선택할 수 있습니다.');
   if (files.reduce((sum, file) => sum + file.size, 0) > 500_000) throw new Error('전체 파일 크기는 500KB 이하여야 합니다.');

@@ -1,4 +1,5 @@
 import { snapshotSchema, type Snapshot } from "../domain";
+import { isActiveModel } from '../active-models';
 
 // Proposed integration contract. Sessions 1/2 can map their payloads here.
 // No Daytona SDK or optimizer logic belongs in this frontend.
@@ -22,6 +23,8 @@ async function request(path: string, init?: RequestInit): Promise<Snapshot> {
     throw new Error(
       "API 결과 형식을 확인할 수 없습니다. 예시 데이터로 대체하지 않았습니다.",
     );
+  if (result.data.configurations.some(c => c.topology.some(node => !isActiveModel(node.model))))
+    throw new Error('현재 데모에 설정되지 않은 모델이 API 결과에 포함되어 있습니다. Gemma 4 E2B, Qwen 3.5 9B, GPT-OSS 20B만 표시할 수 있습니다.');
   return result.data;
 }
 export const benchmarkApi = {

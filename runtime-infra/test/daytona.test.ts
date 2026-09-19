@@ -5,6 +5,16 @@ import { DaytonaProvider } from '../src/providers/daytona.js';
 import { configured, labFixture, request } from './fixtures.js';
 import type { RunStatus } from '../src/contracts.js';
 
+test('kernel-reported peak child RSS is retained, absent RSS remains null', async () => {
+  const fixture = labFixture();
+  Object.assign(fixture.execution, { peakChildRssBytes: 268435456 });
+  const result = await new DaytonaProvider(configured(), () => fixture.client).runBenchmark(request, { runId: 'rss-test', transition() {} });
+  assert.equal(result.metrics.memoryBytes, 268435456);
+  delete (fixture.execution as unknown as Record<string, unknown>).peakChildRssBytes;
+  const without = await new DaytonaProvider(configured(), () => fixture.client).runBenchmark(request, { runId: 'rss-none', transition() {} });
+  assert.equal(without.metrics.memoryBytes, null);
+});
+
 test('without credentials no SDK client or measured result is fabricated', async () => {
   const provider = new DaytonaProvider(loadConfig({}), () => { throw new Error('SDK must not be called'); });
   assert.equal((await provider.getStatus()).status, 'NOT_CONFIGURED');

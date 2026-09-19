@@ -9,12 +9,17 @@ import { NosanaProvider } from './providers/nosana.js';
 import { DnsimpleProvider } from './providers/dnsimple.js';
 import { RuntimeFailure, type ComputeProvider, type NetworkProvider } from './providers/provider.js';
 import { adaptEngineRun } from './engine-adapter.js';
+import { engineClient, WorkloadExperiments } from './workloads.js';
 
 export function buildApp(options: { config?: Config; compute?: Record<RunRequest['provider'], ComputeProvider>; network?: NetworkProvider } = {}) {
   const config = options.config ?? loadConfig();
   const compute = options.compute ?? { daytona: new DaytonaProvider(config), nosana: new NosanaProvider(config) };
   const network = options.network ?? new DnsimpleProvider(config);
   const jobs = new BenchmarkJobs(compute, config.BENCHMARK_TIMEOUT_SECONDS, 200, config.BENCHMARK_MAX_TOKENS);
+  const experiments = new WorkloadExperiments(jobs, engineClient(process.env.ENGINE_API_URL ?? 'http://127.0.0.1:3002'), async () => {
+    if (!(compute.daytona instanceof DaytonaProvider)) throw new RuntimeFailure('LAB_NOT_AVAILABLE', 'The configured provider does not expose a pinned lab policy.');
+    return compute.daytona.getLabPolicy();
+  });
   const app = Fastify({ bodyLimit: 256 * 1024, logger: false, requestTimeout: 15000 });
   const digest = (value: string) => createHash('sha256').update(value).digest();
   app.addHook('onRequest', async (request, reply) => {
@@ -34,6 +39,14 @@ export function buildApp(options: { config?: Config; compute?: Record<RunRequest
   });
   app.get('/health', async () => ({ status: 'ok', service: 'benchmark-runtime' }));
   app.get('/api/providers', async () => ({ providers: await Promise.all([compute.daytona.getStatus(), compute.nosana.getStatus(), network.getStatus()]) }));
+  app.post('/api/benchmark/readiness', async () => {
+    if (!(compute.daytona instanceof DaytonaProvider)) throw new RuntimeFailure('LAB_NOT_AVAILABLE', 'Daytona lab is unavailable.');
+    return compute.daytona.verifyLab();
+  });
+  app.post('/api/workloads/example', async () => experiments.create());
+  app.post('/api/workloads', async request => { const input = z.object({ workload: z.unknown() }).strict().parse(request.body); return experiments.create(input.workload); });
+  app.get('/api/workloads/:id', async (request, reply) => { const { id } = z.object({ id: z.string().uuid() }).parse(request.params); const experiment = experiments.get(id); return experiment ?? reply.code(404).send({ error: { code: 'EXPERIMENT_NOT_FOUND', message: 'Experiment not found in this runtime session.' } }); });
+  app.post('/api/workloads/:id/run', async (request, reply) => { const { id } = z.object({ id: z.string().uuid() }).parse(request.params); if (!experiments.get(id)) return reply.code(404).send({ error: { code: 'EXPERIMENT_NOT_FOUND', message: 'Unknown experiment.' } }); return reply.code(202).send(experiments.start(id)); });
   app.get('/api/benchmark/policy', async () => ({
     timeoutSeconds: config.BENCHMARK_TIMEOUT_SECONDS, maxTokensPerAgent: config.BENCHMARK_MAX_TOKENS,
     temperature: 0, seed: 42, contextSize: 4096, concurrency: 1,
@@ -77,6 +90,6 @@ export function buildApp(options: { config?: Config; compute?: Record<RunRequest
     if (!runs.length) return reply.code(404).send({ error: { code: 'BATCH_NOT_FOUND', message: 'Unknown or expired benchmark batch.' } });
     return { batchId: id, completed: runs.every(r => r.result !== null), runs };
   });
-  app.addHook('onClose', async () => { await jobs.close(); });
+  app.addHook('onClose', async () => { await experiments.close(); await jobs.close(); });
   return app;
 }

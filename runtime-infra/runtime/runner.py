@@ -4,6 +4,10 @@ import json
 import os
 from pathlib import Path
 import re
+try:
+    import resource
+except ImportError:
+    resource = None  # Windows development tests have no Linux RSS telemetry.
 import shutil
 import signal
 import subprocess
@@ -153,6 +157,9 @@ def run(payload):
     write_json('execution.json', {
         'protocolVersion': 1, 'elapsedMs': round((time.monotonic() - started) * 1000, 3),
         'output': output, 'agents': agents, 'error': error, 'modelManifest': manifest,
+        # Linux ru_maxrss: peak resident set of reaped child processes, in KiB.
+        # Agents run sequentially. This is process RSS, never provisioned RAM.
+        'peakChildRssBytes': (int(resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss * 1024) or None) if resource and os.uname().sysname == 'Linux' else None,
     })
     return 1 if error else 0
 

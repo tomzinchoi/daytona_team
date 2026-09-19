@@ -78,7 +78,7 @@ export interface BenchmarkResult {
     totalElapsedMs: number;
     exitStatus: number | null;
     evaluatorExitStatus: number | null;
-    memoryBytes: null;
+    memoryBytes: number | null;
     cpuUsagePercent: null;
     gpuUsagePercent: null;
   };
@@ -125,6 +125,7 @@ export const executionSchema = z.object({
   })).max(3),
   error: z.object({ code: z.string(), message: z.string() }).nullable(),
   modelManifest: z.record(z.string(), z.unknown()),
+  peakChildRssBytes: z.number().int().positive().nullable().optional(),
 });
 export const evaluationSchema = z.object({
   passed: z.boolean(),

@@ -128,7 +128,8 @@ Daytona volumes도 모델 가중치 재사용에 사용할 수 있지만, 이 MV
 - `metrics.totalElapsedMs`: 서버가 측정한 전체 lifecycle. 프로비저닝, 준비, 실행, 평가, 파일 수집, 삭제 포함. 큐 대기 제외.
 - `metrics.exitStatus`: 실제 추론 러너의 종료 코드. 명령을 실행/수집하지 못하면 null.
 - `metrics.evaluatorExitStatus`: 평가 러너 종료 코드. `caseEvidence.buildExitStatus`와 `testExitStatus`는 실제 Node 명령의 종료 코드.
-- `memoryBytes`, `cpuUsagePercent`, `gpuUsagePercent`: 이 MVP에서 수집하지 않으므로 항상 null. CPU/GPU 사용량이나 비용을 추정값으로 채우지 않음.
+- `memoryBytes`: Linux `getrusage(RUSAGE_CHILDREN).ru_maxrss`로 수집한 종료된 llama-server 자식 프로세스 최대 RSS(bytes). 순차 실행 프로세스의 최대치이며 전체 컨테이너 메모리나 할당 RAM이 아님. 미수집 시 null.
+- `cpuUsagePercent`, `gpuUsagePercent`: 미수집이므로 null. CPU/GPU 사용량이나 비용을 추정값으로 채우지 않음.
 - `evaluator`, `caseEvidence`, `agents`, `output`: 실제 체크, 코딩 테스트 수, 에이전트별 출력/시간.
 - `provenance`: snapshot ID, sandbox ID, 환경/fixture/architecture/runner 해시, 실제 자원 할당, timeout, 토큰 제한, 모델 파일 manifest. 할당된 RAM은 사용량이 아님.
 - `cleanup`: 삭제 확인 여부. 실패하면 `FAILED`와 sandbox ID를 반환하고 종료 시 재시도. 생성 응답을 잃으면 실행별 고유 이름으로 조회·삭제를 시도. 삭제 실패 가능성에 대비해 auto-stop, auto-delete, wall-clock TTL도 설정.

@@ -48,6 +48,20 @@ test("real test failures remain measured unsuccessful results", () => {
   assert.equal(result.succeeded, false); assert.ok(result.metrics.quality.score < 1);
 });
 
+test('measured inference failures retain partial agent evidence without inventing later execution', () => {
+  const input = request(6); // two-agent architecture
+  const run = input.runs[0]!;
+  run.success = false; run.status = 'FAILED'; run.agents = [];
+  run.caseEvidence = { ...run.caseEvidence, status: 'ERROR', buildSucceeded: false, tests: { passed: 0, failed: 0, skipped: 4 } };
+  Object.assign(run, { error: { code: 'OUTPUT_TOKEN_LIMIT', message: 'Actual runner exhausted token budget.' } });
+  const result = aggregateRuntimeResults(input);
+  assert.equal(result.succeeded, false);
+  assert.equal(result.metrics.quality.evidence.length, 3);
+  assert.ok(result.metrics.quality.score < 1);
+  assert.equal(run.agents.length, 0);
+  assert.throws(() => aggregateRuntimeResults({ ...input, runs: input.runs.map(r => ({ ...r, error: null })) }), /runtime execution error/);
+});
+
 test("full-workload measured telemetry enables all three recommendation categories", () => {
   const result = aggregateRuntimeResults({ ...request(), resource: { costUsd: 0, computeTimeMs: null, computeTimeBasis: null, peakMemoryMb: null, measurementContext: "Test fixture actual-telemetry field" } });
   const picks = recommend({ workload: DEMO_WORKLOAD, results: [result] });
@@ -56,6 +70,7 @@ test("full-workload measured telemetry enables all three recommendation categori
 });
 
 const mutations: [string, (input: ReturnType<typeof request>) => void, RegExp][] = [
+  ['missing agents from completed execution', input => { input.runs[0]!.agents = []; }, /every requested agent/],
   ["unavailable execution", input => { input.runs[0]!.measurement = "NOT_AVAILABLE"; }, /Only MEASURED/],
   ["missing case", input => { input.runs.pop(); }, /exactly one/],
   ["duplicate run ID", input => { input.runs[1]!.runId = input.runs[0]!.runId; }, /run IDs must be unique/],

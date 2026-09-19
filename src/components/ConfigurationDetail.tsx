@@ -98,7 +98,7 @@ export default function ConfigurationDetail({
             </dd>
           </div>
           <div>
-            <dt> 자원 {config.resource.estimated ? "추정치" : "사용량"}</dt>
+            <dt>{config.resource.basis === 'requested' ? '요청 RAM · 미실측' : config.resource.basis === 'measured' ? '최대 프로세스 RSS · 실측' : `자원 ${config.resource.estimated ? '추정치' : '사용량'}`}</dt>
             <dd>{showMetrics ? resourceLabel(config) : "미측정"}</dd>
           </div>
           <div>
@@ -119,6 +119,7 @@ export default function ConfigurationDetail({
             </div>
           ))}
         </details>
+        {config.provenance && <details className="quality-explainer"><summary>실행 증거 · 재현 정보<ChevronRight size={12}/></summary><p>측정 시각: {config.provenance.measuredAt}</p><p>스냅샷: {config.provenance.snapshotId}</p><p>케이스 실행: {config.provenance.runIds.length}개</p><p>{config.provenance.measurementContext}</p><p>워크로드 SHA-256: {config.provenance.workloadFingerprint}</p></details>}
         <button className="button secondary full" disabled={!showMetrics} onClick={() => onUse(config)}> 이 구성 선택 <ArrowUpRight size={15} />
         </button>
       </div>

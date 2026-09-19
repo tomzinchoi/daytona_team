@@ -58,6 +58,28 @@ export class DaytonaProvider implements ComputeProvider {
     }
     return this.snapshot;
   }
+  async getLabPolicy() {
+    const snapshot = await this.pinnedSnapshot();
+    return { id: 'standard' as const, requestedCpuCores: snapshot.cpu, requestedMemoryMb: snapshot.mem * 1024, accelerator: 'CPU_ONLY' as const, maxOutputTokensPerAgent: this.config.BENCHMARK_MAX_TOKENS, timeoutMsPerCase: this.config.BENCHMARK_TIMEOUT_SECONDS * 1000, maxConcurrentCases: 1 as const, modelHosting: 'PROVIDER_MANAGED' as const };
+  }
+  async verifyLab(): Promise<{ ready: boolean; snapshotId: string; models: unknown; cleanup: string }> {
+    const snapshot = await this.pinnedSnapshot();
+    let sandbox: LabSandbox | undefined;
+    try {
+      sandbox = await this.sdk().create({ name: `atlas-preflight-${Date.now()}`, snapshot: snapshot.id, language: 'python', public: false, networkBlockAll: true, autoStopInterval: 5, autoDeleteInterval: 0, ttlMinutes: 10 }, { timeout: this.config.DAYTONA_PROVISION_TIMEOUT_SECONDS });
+      this.pendingCleanup.set(sandbox.id, sandbox);
+      if (sandbox.cpu !== snapshot.cpu || sandbox.memory !== snapshot.mem || sandbox.disk !== snapshot.disk) throw new RuntimeFailure('ENVIRONMENT_MISMATCH', 'Preflight resources do not match the pinned snapshot.');
+      await sandbox.fs.createFolder(workdir, '700');
+      await sandbox.fs.uploadFile(runnerSource, `${workdir}/runner.py`, 30);
+      await sandbox.fs.uploadFile(Buffer.from(JSON.stringify({ architecture: { agents: ['qwen3-4b', 'deepseek-r1-distill-qwen-7b', 'gemma-3-4b'].map(model => ({ model })) }, benchmarkCase: { evaluator: { type: 'node_tests' } } })), `${workdir}/input.json`, 30);
+      const check = await sandbox.process.executeCommand('python3 runner.py preflight input.json', workdir, undefined, 30);
+      if (check.exitCode !== 0) throw new RuntimeFailure('RUNTIME_NOT_READY', 'Pinned snapshot failed Python, Node, llama-server, or model manifest preflight.');
+      const manifest = JSON.parse((await sandbox.fs.downloadFile('/opt/models/manifest.json', 30)).toString('utf8'));
+      return { ready: true, snapshotId: snapshot.id, models: manifest, cleanup: 'DELETED' };
+    } finally {
+      if (sandbox) { await sandbox.delete(60, true); this.pendingCleanup.delete(sandbox.id); }
+    }
+  }
   async runBenchmark(request: RunRequest, context: BenchmarkContext): Promise<BenchmarkResult> {
     const started = performance.now();
     const result = emptyResult(request, context.runId, this.config.BENCHMARK_TIMEOUT_SECONDS, this.config.BENCHMARK_MAX_TOKENS);
@@ -112,6 +134,7 @@ export class DaytonaProvider implements ComputeProvider {
       }
       result.measurement = 'MEASURED';
       result.metrics.elapsedMs = execution.elapsedMs;
+      result.metrics.memoryBytes = execution.peakChildRssBytes ?? null;
       result.output = execution.output;
       result.agents = execution.agents;
       result.provenance.modelManifest = execution.modelManifest;

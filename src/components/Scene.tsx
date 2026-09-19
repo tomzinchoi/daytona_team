@@ -37,7 +37,7 @@ export default function Scene({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     el.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#fbfaff');
+    scene.background = new THREE.Color('#0c1324');
     scene.add(new THREE.AmbientLight('#ffffff', 2));
     const light = new THREE.DirectionalLight('#ffffff', 3);
     light.position.set(4, 10, 6); scene.add(light);
@@ -56,7 +56,7 @@ export default function Scene({
     controls.maxDistance = 30;
     controls.maxPolarAngle = Math.PI / 2.05;
     const textures: THREE.Texture[] = [];
-    function line(a: number[], b: number[], color = "#dcd9ee", opacity = 0.8) {
+    function line(a: number[], b: number[], color = "#334565", opacity = 0.8) {
       const geo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(...a),
         new THREE.Vector3(...b),
@@ -70,7 +70,7 @@ export default function Scene({
     function label(
       text: string,
       position: number[],
-      color = "#65617d",
+      color = "#bdc9e3",
       scale = 1,
     ) {
       const cv = document.createElement("canvas");
@@ -98,12 +98,12 @@ export default function Scene({
     for (let x = -4; x <= 4; x += 1) line([x, 0, -3], [x, 0, 3]);
     for (let z = -3; z <= 3; z += 0.75) line([-4, 0, z], [4, 0, z]);
     for (let y = 1; y <= 5; y++) {
-      line([-4, y, -3], [4, y, -3], "#252d24", 0.65);
-      line([-4, y, -3], [-4, y, 3], "#252d24", 0.65);
+      line([-4, y, -3], [4, y, -3], "#334565", 0.65);
+      line([-4, y, -3], [-4, y, 3], "#334565", 0.65);
     }
-    line([-4, 0, 3], [4, 0, 3], "#75826c");
-    line([-4, 0, 3], [-4, 5, 3], "#75826c");
-    line([4, 0, 3], [4, 0, -3], "#75826c");
+    line([-4, 0, 3], [4, 0, 3], "#8191b8");
+    line([-4, 0, 3], [-4, 5, 3], "#8191b8");
+    line([4, 0, 3], [4, 0, -3], "#8191b8");
     const maxLatency = Math.max(
       10,
       Math.ceil(Math.max(...configurations.map((c) => c.latency)) / 10) * 10,
@@ -117,24 +117,24 @@ export default function Scene({
       label(
         `${Math.round((maxLatency * i) / 4)}s`,
         [-4 + i * 2, -0.3, 3.35],
-        "#7e8878",
+        "#a5b6d5",
         0.65,
       );
     for (let i = 1; i <= 5; i++)
-      label(`${i * 20}%`, [-4.65, i, 3], "#7e8878", 0.65);
+      label(`${i * 20}%`, [-4.65, i, 3], "#a5b6d5", 0.65);
     for (let i = 0; i <= 2; i++)
       label(
         `${((maxResource * i) / 2).toFixed(2)}`,
         [4.55, 0, 3 - i * 3],
-        "#7e8878",
+        "#a5b6d5",
         0.65,
       );
     label("지연 시간 (초) →", [0, -0.9, 4]);
     label("작업 품질 ↑", [-4.2, 5.65, 3]);
     label(
-      `자원${configurations.some(c => c.resource.estimated) ? " 추정" : " 사용량"} (${configurations[0]?.resource.unit ?? "단위"})`,
+      `${configurations.some(c => c.resource.basis === 'requested') ? '요청 RAM · 미실측' : configurations.some(c => c.resource.basis === 'measured') ? '실측 최대 RSS' : '자원 추정'} (${configurations[0]?.resource.unit ?? "단위"})`,
       [4.5, -0.8, -1],
-      "#85907e",
+      "#a5b6d5",
       0.7,
     );
     const meshes: THREE.Mesh[] = [];
@@ -149,12 +149,14 @@ export default function Scene({
       const color = c.quality >= 80 ? '#20b965' : c.quality >= 65 ? '#e7af20' : '#eb6248';
       const height = Math.max(0.04, c.quality / 20);
       const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(active ? 0.34 : 0.24, height, active ? 0.34 : 0.24),
+        new THREE.BoxGeometry(active ? 0.46 : 0.34, height, active ? 0.46 : 0.34),
         new THREE.MeshStandardMaterial({
           color,
           transparent: c.evidence === "predicted",
           opacity: c.evidence === "predicted" ? 0.65 : 1,
-          roughness: 0.35,
+          roughness: 0.28,
+          emissive: active ? '#6653af' : '#000000',
+          emissiveIntensity: active ? 0.55 : 0,
         }),
       );
       mesh.position.copy(position(c));

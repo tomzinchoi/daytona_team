@@ -13,6 +13,7 @@ export const configurationSchema = z
       value: z.number().finite().nonnegative(),
       unit: z.string(),
       estimated: z.boolean(),
+      basis: z.enum(["predicted", "measured", "requested"]).optional(),
     }),
     tests: z
       .object({
@@ -42,6 +43,8 @@ export const configurationSchema = z
       "failed",
     ]),
     error: z.string().optional(),
+    progress: z.object({ completed: z.number().int(), total: z.number().int(), currentCase: z.string().nullable() }).optional(),
+    provenance: z.object({ resultId: z.string(), workloadFingerprint: z.string(), measuredAt: z.string(), runIds: z.array(z.string()), snapshotId: z.string().nullable(), measurementContext: z.string() }).optional(),
   })
   .superRefine((c, ctx) => {
     if (c.tests && c.tests.passed > c.tests.total)
@@ -70,7 +73,9 @@ export const snapshotSchema = z
         z.object({ id: z.string(), name: z.string(), topology: z.string() }),
       )
       .optional(),
-    integration: z.enum(["orchestrator", "engine-screening"]).optional(),
+    integration: z.enum(["orchestrator", "engine-screening", "runtime-workload"]).optional(),
+    warnings: z.array(z.string()).optional(),
+    resourceAxis: z.string().optional(),
     recommendations: z
       .array(
         z.object({
@@ -93,7 +98,7 @@ export const snapshotSchema = z
         code: "custom",
         message: "Configuration IDs must be unique",
       });
-    if (new Set(s.configurations.map((c) => c.resource.unit)).size > 1)
+    if (new Set(s.configurations.filter(c => s.source !== "api" || c.evidence === "measured").map((c) => c.resource.unit)).size > 1)
       ctx.addIssue({
         code: "custom",
         message: "Resource units must be comparable",

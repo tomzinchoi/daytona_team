@@ -72,7 +72,14 @@ export function aggregateRuntimeResults(input: unknown): MeasuredBenchmarkResult
     const caseEvidence = item as CaseEvidence;
     const succeeded = caseEvidence.status === "COMPLETED" && caseEvidence.buildSucceeded && caseEvidence.tests.passed === benchmarkCase.evaluation.expectedTests;
     requireInput(run.success === succeeded && run.status === (succeeded ? "COMPLETED" : "FAILED"), "Runtime success/status contradict objective case evidence");
-    requireInput(Array.isArray(run.agents) && run.agents.length === architecture.agents.length, "Runtime must report every requested agent in order");
+    requireInput(Array.isArray(run.agents) && run.agents.length <= architecture.agents.length, "Runtime must report an ordered prefix of requested agents");
+    if (run.agents.length !== architecture.agents.length) {
+      // A measured inference timeout/token failure may stop before later agents run.
+      // Never invent their outputs or discard the failed case from workload quality.
+      requireInput(!succeeded && (caseEvidence.status === 'ERROR' || caseEvidence.status === 'TIMEOUT'), "Runtime must report every requested agent for completed execution");
+      record(run.error, 'runtime execution error'); nonempty(run.error.code, 'runtime error code'); nonempty(run.error.message, 'runtime error message');
+      requireInput(!caseEvidence.buildSucceeded && caseEvidence.tests.passed === 0, "Interrupted execution cannot claim successful build or tests");
+    }
     run.agents.forEach((agent: unknown, index: number) => {
       record(agent, "runtime agent"); const expected = architecture.agents[index]!;
       requireInput(agent.model === expected.modelId && agent.role === `${expected.role}: ${expected.instruction}`, "Runtime agent model/order/instruction differs from the selected architecture");

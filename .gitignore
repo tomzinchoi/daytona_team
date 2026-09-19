@@ -12,3 +12,4 @@ __pycache__/
 *.tsbuildinfo
 playwright-report/
 test-results/
+test-results-*/

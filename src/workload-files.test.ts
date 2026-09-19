@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { composeWorkload, readWorkloadFiles } from './workload-files';
+import { composeWorkload, mergeWorkloadFiles, readWorkloadFiles } from './workload-files';
 
 describe('workload file input', () => {
+  it('adds files without replacing earlier attachments and enforces combined limits', async () => {
+    const existing = await readWorkloadFiles([new File(['초안'], 'draft.md')]);
+    const added = await readWorkloadFiles([new File(['테스트'], 'tests.txt')]);
+    expect(mergeWorkloadFiles(existing, added).map(file => file.name)).toEqual(['draft.md', 'tests.txt']);
+    expect(() => mergeWorkloadFiles(existing, existing)).toThrow('같은 이름');
+    expect(() => mergeWorkloadFiles(Array.from({length:5}, (_,i) => ({name:`${i}.txt`,content:'x',size:1})), added)).toThrow('5개');
+    expect(() => mergeWorkloadFiles([{name:'large.md',content:'',size:499999}], added)).toThrow('500KB');
+    expect(existing).toHaveLength(1);
+  });
   it('accepts UTF-8 text, structured JSON, CSV, and code as inert text', async () => {
     const files = await readWorkloadFiles([new File(['반복 작업'], 'task.md'), new File(['{"task":"수정"}'], 'cases.json'), new File(['a,b\n1,2'], 'data.csv'), new File(['print("hello")'], 'task.py')]);
     expect(files).toHaveLength(4);
