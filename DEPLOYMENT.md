@@ -6,7 +6,9 @@ The interface is now Korean. 2D uses a white comparison table with a purple grad
 
 Workload input supports drag/drop or selection of UTF-8 TXT, MD, CSV, JSON, JS, TS, and PY files (up to 5 files, 200KB each, 500KB combined; composed request up to 100,000 characters). Files are read locally, previewable, removable, and never executed in the browser. Text is optional. On a configured orchestration API, file contents are included in the workload request. This frontend deployment alone does not activate that API; disconnected submissions preserve the input and explain the missing connection.
 
-Validation: 12 unit tests and 7 browser tests, including Korean navigation, file validation, 2D/3D switching, WebGL fallback, JSON export, empty-state evidence gating, provider errors, and mobile layout.
+Validation: 12 unit tests and 10 browser tests, including Korean navigation, file validation, 2D/3D switching, WebGL fallback, JSON export, empty-state evidence gating, provider errors, and mobile layout.
+
+Deployed to production with status READY from commit `3935168`: https://daytona-team.vercel.app (immutable deployment: https://daytona-team-f5yhrwjm7-mongben.vercel.app). The live Korean interface and file chooser were verified in a browser; no browser errors were reported. The deployment error-log query returned no logs. External monitoring/drains were not inspected or configured in this update.
 
 Repository: https://github.com/tomzinchoi/daytona_team
 
