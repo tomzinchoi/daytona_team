@@ -18,6 +18,7 @@ Fixes are based on frontend commit `1422637`. The separate backend integration i
 - Original test suite: 10 browser tests passed before investigation.
 - Reproduced three regressions before fixing them: second attachment replaced the first, a delayed read restored a reset attachment, and unchecked providers appeared disconnected.
 - Final isolated checkout: **15 unit tests, 13 browser tests, TypeScript check and production build passed**.
+- The same 13 browser tests also passed against the production build on port 5185. All five bundled DM Sans / IBM Plex Mono font faces loaded successfully. This extra check bypassed a development-only font allow-list issue caused by the isolated checkout sharing installed dependencies.
 - Browser coverage includes initial evidence gating, candidate screening, demo selection/export/reset, 2D/3D and WebGL fallback, mobile layout, provider outages, uploads and the new regressions.
 - Browser check of provider cards confirms the initial status is “확인 전”.
 - No model inference, cloud benchmark or deployment was performed as part of this UI correction.
