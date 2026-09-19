@@ -1,5 +1,6 @@
 export * from "./shared/types.js";
 export * from "./benchmark/architectures.js";
+export * from "./benchmark/aggregation.js";
 export * from "./benchmark/demo.js";
 export * from "./benchmark/models.js";
 export * from "./benchmark/quality.js";

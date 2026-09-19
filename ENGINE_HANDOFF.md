@@ -24,4 +24,11 @@ Use the engine's shared types for API data; adapt only at the UI boundary. Quali
 
 Keep predicted and measured records separate, show null metrics as unavailable, and show three recommendation categories even when multiple categories select the same architecture. A missing resource comparison intentionally leaves balanced/efficient unavailable. See `benchmark-engine/README.md` for the final verified contract and integration examples.
 
-Engine verification: 32 tests passed; strict typecheck, production build, and compiled-server HTTP smoke passed. The default predicted Top 3 is `a-extended`, `a-standard`, `b-standard`. This session did not execute an open model or provision external infrastructure.
+## Backend ingestion upgrade
+
+- `/api/architectures` now accepts optional `computeConfigs` (1–3 actual known runnable policies). A single fixed lab policy generates all 5 families and screens the Top 3, avoiding unsupported default preset requests. Omission preserves 15 candidates.
+- `POST /api/results/aggregate` accepts `{id, workload, architecture, provider, measuredAt, runs, resource?}` and returns `{result}`. `runs` are terminal runtime result objects from all cases. It validates architecture/fixture hashes, compute limits, model order/instructions, environment consistency, complete coverage, success evidence, and measurement kinds. The pure equivalent is `aggregateRuntimeResults`.
+- Supply actual full-workload telemetry via optional `resource`, or omit it to retain null values. Pass returned `.result` objects to `/api/recommend`.
+- This is local contract ingestion, not infrastructure integration. Session 2 still owns real executions and telemetry; Session 3 owns UI orchestration.
+
+Engine verification: 53 tests passed. The default predicted Top 3 is `a-extended`, `a-standard`, `b-standard`. This session did not execute an open model or provision external infrastructure.

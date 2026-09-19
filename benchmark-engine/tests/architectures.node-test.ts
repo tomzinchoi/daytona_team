@@ -75,3 +75,18 @@ test("screening validates limits, profiles, and duplicate candidates", () => {
   assert.throws(() => screenArchitectures(DEMO_WORKLOAD, [candidates[0]!, candidates[0]!]), /unique/);
   assert.deepEqual(screenArchitectures(DEMO_WORKLOAD, []), []);
 });
+
+test("known runtime policy generates and screens only runnable configurations", () => {
+  const policy = { ...generateArchitectures(DEMO_WORKLOAD)[1]!.compute, maxOutputTokensPerAgent: 512, timeoutMsPerCase: 180000 };
+  const result = architecturesEndpoint({ workload: DEMO_WORKLOAD, computeConfigs: [policy] });
+  assert.equal(result.candidateArchitectures.length, 5); assert.equal(result.screenedArchitectures.length, 3);
+  for (const entry of result.candidateArchitectures) assert.deepEqual(entry.compute, policy);
+  assert.deepEqual(new Set(result.candidateArchitectures.map(entry => entry.family)), new Set(["A", "B", "C", "D", "E"]));
+});
+
+test("invalid or duplicate runtime compute policies are rejected at the API boundary", () => {
+  const policy = generateArchitectures(DEMO_WORKLOAD)[0]!.compute;
+  for (const computeConfigs of [[], null, [null], [{}], [policy, policy], [{ ...policy, requestedCpuCores: -1 }]]) {
+    assert.throws(() => architecturesEndpoint({ workload: DEMO_WORKLOAD, computeConfigs }));
+  }
+});

@@ -1,5 +1,5 @@
 import type { AgentSpec, Architecture, ComputeConfig, ModelId, Workload } from "../shared/types.js";
-import { validateWorkload } from "./validation.js";
+import { requireInput, validateArchitecture, validateWorkload } from "./validation.js";
 
 const COMPUTE_CONFIGS: ComputeConfig[] = [
   { id: "compact", requestedCpuCores: 2, requestedMemoryMb: 12288, accelerator: "CPU_ONLY", maxOutputTokensPerAgent: 384, timeoutMsPerCase: 20000, maxConcurrentCases: 1, modelHosting: "PROVIDER_MANAGED" },
@@ -21,9 +21,12 @@ const FAMILIES: { family: Architecture["family"]; name: string; stages: [ModelId
   { family: "E", name: "DeepSeek → Qwen → Gemma", stages: [["deepseek-r1-distill-qwen-7b", "PLANNER"], ["qwen3-4b", "IMPLEMENTER"], ["gemma-3-4b", "REVIEWER"]] },
 ];
 
-export function generateArchitectures(workload: Workload): Architecture[] {
+export function generateArchitectures(workload: Workload, computeConfigs: ComputeConfig[] = COMPUTE_CONFIGS): Architecture[] {
   validateWorkload(workload);
-  return FAMILIES.flatMap(({ family, name, stages }) => COMPUTE_CONFIGS.map((compute) => {
+  requireInput(Array.isArray(computeConfigs) && computeConfigs.length >= 1 && computeConfigs.length <= 3, "computeConfigs must contain 1–3 known runnable policies");
+  requireInput(computeConfigs.every(compute => compute !== null && typeof compute === "object"), "Compute policies must be objects");
+  requireInput(new Set(computeConfigs.map(compute => compute.id)).size === computeConfigs.length, "Compute policy IDs must be unique");
+  const candidates: Architecture[] = FAMILIES.flatMap(({ family, name, stages }) => computeConfigs.map((compute) => {
     const agents = stages.map(([modelId, role], i): AgentSpec => ({ id: `agent-${i + 1}`, modelId, role, instruction: ROLE_INSTRUCTIONS[role] }));
     return {
       id: `${family.toLowerCase()}-${compute.id}`, family, name: `${name} / ${compute.id}`,
@@ -32,4 +35,6 @@ export function generateArchitectures(workload: Workload): Architecture[] {
       compute: { ...compute },
     };
   }));
+  candidates.forEach(validateArchitecture);
+  return candidates;
 }

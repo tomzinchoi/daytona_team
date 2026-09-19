@@ -117,7 +117,8 @@ Every recommendation is scoped to: **“Best among evaluated configurations for 
 | `GET /health` | — | Service status; this engine has no live-provider connection |
 | `GET /api/demo-workload` | — | `{workload: Workload}` |
 | `GET /api/model-profiles` | — | `{profiles: ModelProfile[], kind: "PREDICTED"}` |
-| `POST /api/architectures` | `{workload: Workload}` | `{candidateArchitectures: Architecture[], screenedArchitectures: PredictedBenchmarkResult[], screeningKind: "PREDICTED"}` |
+| `POST /api/architectures` | `{workload: Workload, computeConfigs?: ComputeConfig[]}` | `{candidateArchitectures: Architecture[], screenedArchitectures: PredictedBenchmarkResult[], screeningKind: "PREDICTED"}` |
+| `POST /api/results/aggregate` | `{id, workload, architecture, provider, measuredAt, runs, resource?}` | `{result: MeasuredBenchmarkResult}` |
 | `POST /api/recommend` | `{workload, results: MeasuredBenchmarkResult[], weights?, acceptableQuality?, resourceMetric?}` | `RecommendResponse` below |
 
 ```typescript
@@ -139,6 +140,20 @@ interface RecommendResponse {
 POST bodies require `Content-Type: application/json` and have a 1 MiB limit. Errors are `{error: {code, message}}`: 400 invalid input or mixed evidence, 404 unknown route, 405 wrong method, 413 oversized body, 415 wrong content type. No state is persisted. Framework adapters may directly call `architecturesEndpoint(unknown)` and `recommendEndpoint(unknown)` for the same validation and return contracts.
 
 ## Exact Session 2 integration
+
+### Match the available runtime before screening
+
+Pass `computeConfigs` to `/api/architectures` when the runtime uses a fixed prepared snapshot. Each supplied policy must be verified by the caller against the real lab: `id` (compact/standard/extended), `requestedCpuCores`, `requestedMemoryMb`, `accelerator: "CPU_ONLY"`, `maxOutputTokensPerAgent`, `timeoutMsPerCase`, `maxConcurrentCases: 1`, `modelHosting: "PROVIDER_MANAGED"`. One policy produces 5 architecture candidates and the Top 3; two produce 10, three produce 15. Omission preserves the original 15-candidate search. The engine never probes infrastructure or assumes that a supplied policy is available.
+
+### Ingest terminal runtime records
+
+`POST /api/results/aggregate` (or the pure `aggregateRuntimeResults` function) now handles the previously manual aggregation step. `runs` contains the terminal per-case result objects, not polling envelopes. Supply the original `workload`, selected `architecture`, `provider` status captured at execution start, a unique aggregate `id`, and actual completion timestamp `measuredAt`.
+
+The adapter verifies full case coverage, unique run IDs, `MEASURED` execution, provider identity, source architecture SHA-256, trusted fixture SHA-256, the requested CPU/RAM/token/time policy, ordered agent models/instructions, objective success, and consistent snapshot/runner/model-manifest provenance across cases. It sums actual sequential total wall durations and recomputes quality. Incomplete evidence and `NOT_AVAILABLE` executions are rejected. As with the other endpoints, these are consistency checks, not cryptographic proof that an untrusted caller ran a model.
+
+Optional `resource` must be actual telemetry covering the entire run set. Omit it to preserve all resource metrics as null; the adapter does not turn provisioned RAM or wall time into utilization. Submit returned `.result` objects to `/api/recommend`. No provider network call is made by aggregation.
+
+### Execution requirements
 
 1. Obtain the workload and screening response. Keep the original workload object and each selected `.architecture` unchanged.
 2. For each of the 3 selected architectures, provision the requested CPU/RAM configuration or report that it is unavailable. Missing provider credentials or an unavailable model are provider failures, not measured benchmark evidence.
@@ -189,4 +204,4 @@ The automated suite checks architecture generation, single/multiple agents, pred
 
 Unit-test measurement records are explicitly synthetic and live only under `tests/`; no endpoint returns synthetic measurements. No real open-model or Daytona benchmark is claimed by this package.
 
-Verified in this session: **32 tests passed**, strict typecheck passed, production TypeScript build passed, and the compiled HTTP server passed a smoke check. Default predicted shortlist: `a-extended`, `a-standard`, `b-standard`. These predictions are not live benchmark results.
+Verified after the ingestion upgrade: **53 tests passed**, including HTTP ingestion → recommendation, invalid provenance rejection, and runtime-constrained screening. Strict typecheck and production TypeScript build are required checks. Default predicted shortlist: `a-extended`, `a-standard`, `b-standard`. These predictions are not live benchmark results.

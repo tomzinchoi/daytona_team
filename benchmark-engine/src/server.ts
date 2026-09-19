@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
-import { architecturesEndpoint, recommendEndpoint } from "./api.js";
+import { aggregateResultsEndpoint, architecturesEndpoint, recommendEndpoint } from "./api.js";
 import { DEMO_WORKLOAD } from "./benchmark/demo.js";
 import { MODEL_PROFILES } from "./benchmark/models.js";
 import { InputError } from "./benchmark/validation.js";
@@ -40,11 +40,11 @@ export function createBenchmarkServer() {
       if (request.method === "GET" && path === "/health") return json(response, 200, { status: "ok", service: "benchmark-engine", liveBenchmarkProviderConnected: false });
       if (request.method === "GET" && path === "/api/demo-workload") return json(response, 200, { workload: DEMO_WORKLOAD });
       if (request.method === "GET" && path === "/api/model-profiles") return json(response, 200, { profiles: MODEL_PROFILES, kind: "PREDICTED" });
-      if (path === "/api/architectures" || path === "/api/recommend") {
+      if (path === "/api/architectures" || path === "/api/recommend" || path === "/api/results/aggregate") {
         if (request.method !== "POST") { response.setHeader("allow", "POST"); return json(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Use POST" } }); }
         if (!(request.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) return json(response, 415, { error: { code: "UNSUPPORTED_MEDIA_TYPE", message: "Use Content-Type: application/json" } });
         const body = await readJson(request);
-        return json(response, 200, path === "/api/architectures" ? architecturesEndpoint(body) : recommendEndpoint(body));
+        return json(response, 200, path === "/api/architectures" ? architecturesEndpoint(body) : path === "/api/results/aggregate" ? aggregateResultsEndpoint(body) : recommendEndpoint(body));
       }
       return json(response, 404, { error: { code: "NOT_FOUND", message: "Unknown API route" } });
     } catch (error) {

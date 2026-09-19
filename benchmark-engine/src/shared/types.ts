@@ -182,7 +182,11 @@ export interface Recommendation {
   claim: "Best among evaluated configurations for this workload.";
 }
 
-export interface ArchitecturesRequest { workload: Workload }
+export interface ArchitecturesRequest {
+  workload: Workload;
+  /** Optional 1–3 known runnable compute policies; default is the 3 MVP presets. */
+  computeConfigs?: ComputeConfig[];
+}
 export interface ArchitecturesResponse {
   candidateArchitectures: Architecture[];
   /** Ranked Top 3; Session 2 runs each entry's architecture. */

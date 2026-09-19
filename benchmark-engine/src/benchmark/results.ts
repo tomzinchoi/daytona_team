@@ -11,7 +11,12 @@ function canonical(value: unknown): string {
 
 export function workloadFingerprint(workload: Workload): string {
   validateWorkload(workload);
-  return createHash("sha256").update(canonical(workload)).digest("hex");
+  return contractFingerprint(workload);
+}
+
+/** Compatible with the runtime's canonical SHA-256 provenance hashing. */
+export function contractFingerprint(value: unknown): string {
+  return createHash("sha256").update(canonical(value)).digest("hex");
 }
 
 export interface MeasuredResultInput {
