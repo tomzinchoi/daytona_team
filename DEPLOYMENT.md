@@ -2,6 +2,17 @@
 
 Repository: https://github.com/tomzinchoi/daytona_team
 
+Production frontend: https://daytona-team.vercel.app
+
+Vercel project: `mongben/daytona-team`. Initial production deployment reached
+READY on 2026-09-19 from commit `b9200f5`. The live page and demo architecture
+search were verified in the browser. All source packages are in GitHub.
+
+Git integration could not connect to `tomzinchoi/daytona_team` with the current
+Vercel account's repository access. Deployment currently uses the authenticated
+CLI; Git pushes alone do not trigger deployment. The repository owner must grant
+the Vercel GitHub integration access before automatic Git deployments can work.
+
 The root application is the React/Vite frontend. `benchmark-engine/`,
 `runtime-infra/`, and `nosana-connection/` are separate backend/runtime packages.
 
