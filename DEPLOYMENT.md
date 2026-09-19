@@ -14,8 +14,9 @@ The root application is the React/Vite frontend. `benchmark-engine/`,
 5. Connect `tomzinchoi/daytona_team` in the Vercel project's Git settings to enable
    deployments on subsequent pushes to `main`.
 
-`vercel.json` selects Vite and `dist`. API routes are excluded from the frontend
-fallback. Vite development proxies do not run on Vercel: live backend operations
+`vercel.json` selects Vite and `dist`. `/api`, `/engine`, and `/runtime` routes are
+excluded from the frontend fallback and return HTTP 404 until backend routing is
+configured. Vite development proxies do not run on Vercel: live backend operations
 require separately hosted backend services and production API configuration.
 Frontend deployment alone does not deploy Daytona workers or the benchmark engine.
 
