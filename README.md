@@ -2,7 +2,7 @@
 
 A frontend workbench for comparing Model × Agent Architecture × Compute on a recurring workload. React, TypeScript, Vite, and Three.js. No Daytona SDK calls or optimization algorithms are implemented in the frontend.
 
-Current implementation status and remaining integration work: [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md). The initial screen has no benchmark results; synthetic values appear only after explicitly opening the demo. Candidate predictions are not displayed as measured performance.
+Current implementation status and remaining integration work: [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md). The current public UI is restricted to Gemma 4 E2B, Qwen 3.5 9B, and GPT-OSS 20B. The initial screen has no benchmark results; the older synthetic demo and legacy-model execution entrypoints are hidden. Candidate predictions are not displayed as measured performance.
 
 ## Run
 
@@ -15,17 +15,23 @@ Open `http://127.0.0.1:5173`. Production build: `pnpm build`. Serve the build wi
 
 The root package is the frontend. `benchmark-engine/`, `runtime-infra/`, and `nosana-connection/` are owned by the other sessions and have separate runtime/setup requirements. Do not install their dependencies into the frontend root.
 
-## A 60–90 second demo
+## Team backend results
 
-1. Click **Repository bug fixes**. This is the one-click demo entry; it supplies the example workload and opens 15 architecture candidates.
-2. Click **Preview benchmark stages**. Three static, explicitly labeled demo statuses explain Daytona provisioning, running, and evaluation. No timer pretends a sandbox is executing.
-3. Click **Reveal demo results**. The three selected points become solid and the supplied Pareto/recommendation highlights appear.
-4. Drag the chart to orbit, scroll to zoom, hover a point for metrics, or click a point to inspect. The configuration dropdown offers keyboard access to every point. Inspect the quality breakdown.
-5. Compare **Performance / Balanced / Efficient**. Click **Use this configuration** on any card.
-6. Review **Selected Production Configuration**, then export its JSON. Selection is in-memory for this session; export does not deploy infrastructure.
-7. Open **Providers** to see connection status. **Check runtime connections** reads the real runtime API. Unverified or unavailable connections never appear live.
+1. Open **팀 실측 기록** or **Nosana × Daytona 실측 기록 보기**.
+2. Compare the three models' problem pass rates, recorded response latency and tokens.
+3. Select a model card or chart point to inspect generated code and grading errors.
+4. Scrub the recorded timeline. It is a replay, not current execution.
+5. Import a new `results_live.jsonl` or `results_full.jsonl` from `backend/bench.py`.
+   Files are parsed locally and never uploaded by this viewer.
+6. Export the validated records as JSONL. Missing timing/tokens stay missing.
 
-All synthetic business data lives in **`src/data/demo.ts`**. No synthetic benchmark values are scattered through components. Demo results use **illustrative** evidence and cannot use the **measured** label. The quality example is exactly passed test assertions / total assertions × 100, with equal assertion weights. vCPU-min values are explicitly resource estimates, not billing costs.
+See [HUMANEVAL_INTEGRATION.md](./HUMANEVAL_INTEGRATION.md) for the data contract,
+provenance limits, supported models, and tests. This recorded-result viewer does
+not start the Python CLI or claim that records are new website executions.
+
+The older architecture-engine components below remain in source for separate
+integration work. They use a different protocol and model catalog and are not
+entrypoints in the current three-model public UI.
 
 ## Screens and components
 
