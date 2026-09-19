@@ -68,3 +68,18 @@ The score does not change original benchmark rankings or assert universal qualit
 
 Additional checks: `node --test backend/task-grading.test.mjs` and
 `pnpm exec playwright test e2e/task-grading.spec.ts`.
+
+## Production verification (2026-09-19)
+
+- Production: https://daytona-team.vercel.app — READY, source commit `44e3f5d`.
+- Immutable deployment: https://daytona-team-4yhq5s01n-mongben.vercel.app.
+- React/Vite production build completed in 31 seconds on Vercel.
+- 24 frontend unit tests, 6 server tests, and 20 browser tests passed.
+- Real production browser flow: Gemma 4 E2B generation → isolated Python grading
+  returned HTTP 200, 3/3 passing tests (100%) for the example addition function.
+  No browser page errors occurred. This is a verification example, not a model ranking.
+- Production text/JSON exact grading also returned HTTP 200 and expected scores.
+- A separate real Daytona negative-control run (correct, wrong, exception, infinite
+  loop) returned 1/4 passing tests (25%).
+- Vercel error-level log scan for this deployment found no logs. External log drains
+  and monitoring integrations were not inspected or changed.
