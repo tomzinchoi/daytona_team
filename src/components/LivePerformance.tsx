@@ -18,7 +18,7 @@ export default function LivePerformance({ run, source = 'live' }: { run: LiveRun
     <h2>벤치마크 성능표</h2>
     <p>{source === 'recorded' ? '팀이 저장한 HumanEval 실행 기록입니다. 새로 입력한 작업은 아직 평가하지 않았습니다. 출처: ' : complete ? '세 모델의 실행 결과를 집계했습니다. 실행 ID: ' : '현재까지 반환된 결과입니다. 미완료 모델은 최종 성능으로 비교하지 마세요. 실행 ID: '}{run.id}</p>
     <div className="he-table-scroll" tabIndex={0}>
-      <table><caption className="sr-only">이번 실행의 모델별 성능 비교</caption><thead><tr><th scope="col">모델</th><th scope="col">문제 통과</th><th scope="col">통과율</th><th scope="col">평균 응답 시간</th><th scope="col">평균 생성 토큰</th><th scope="col">진행 상태</th></tr></thead>
+      <table><caption className="sr-only">{source === 'recorded' ? '저장된 기록의 모델별 성능 비교' : '이번 실행의 모델별 성능 비교'}</caption><thead><tr><th scope="col">모델</th><th scope="col">문제 통과</th><th scope="col">통과율</th><th scope="col">평균 응답 시간</th><th scope="col">평균 생성 토큰</th><th scope="col">진행 상태</th></tr></thead>
         <tbody>{models.map(model => <tr key={model.id}>
           <th scope="row">{model.name}</th>
           <td>{model.passed} / {model.rows.length}건</td>

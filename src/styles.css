@@ -2107,6 +2107,8 @@ h1,h2,h3,p { word-break:keep-all; overflow-wrap:anywhere; }
 .workload-grid { grid-template-columns:minmax(310px,.8fr) minmax(0,1.4fr); }
 .workbench-performance { min-width:0; align-self:start; }
 .workload-grid > .he-details { min-width:0; align-self:start; }
+.he-details td small { display:block; color:var(--muted); margin-top:5px; font-size:11px; }
+@media(max-width:1100px) { .workload-grid > .workbench-performance,.workload-grid > .he-details { order:-1; } }
 .workload-card h2 { font-size:31px; line-height:1.5; }
 .workload-card textarea { background:#fff; color:#252d45; font-size:14px; }
 .upload-zone { border:1px dashed #aaa0d5; border-radius:12px; padding:20px 12px; display:flex; align-items:center; flex-direction:column; gap:10px; background:#faf8ff; color:#7560ae; text-align:center; }
