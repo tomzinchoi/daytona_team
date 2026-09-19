@@ -3,7 +3,7 @@ import './HumanEvalResults.css';
 
 export type LiveRun = { id: string; status: string; total: number; error?: string; rows: { model: string; task_id: string; passed: boolean; time_ms: number | null; tokens?: number | null; error?: string | null }[] };
 const number = (value: number) => value.toLocaleString('ko-KR', { maximumFractionDigits: 3 });
-export default function LivePerformance({ run }: { run: LiveRun }) {
+export default function LivePerformance({ run, source = 'live' }: { run: LiveRun; source?: 'live' | 'recorded' }) {
   const expected = Number.isInteger(run.total / 3) ? run.total / 3 : null;
   const models = ACTIVE_MODELS.map(model => {
     const rows = run.rows.filter(row => row.model === model.id);
@@ -13,10 +13,10 @@ export default function LivePerformance({ run }: { run: LiveRun }) {
   });
   const maxTime = Math.max(1, ...models.map(model => model.average ?? 0));
   const complete = run.status === 'completed' && run.rows.length === run.total;
-  return <section className="panel he-details" aria-label="실행 벤치마크 성능표" style={{ padding: 24, margin: '20px 0' }}>
-    <span className="eyebrow">이번 실행의 실제 채점 결과</span>
+  return <section className="panel he-details" aria-label={source === 'recorded' ? '저장된 실측 성능표' : '실행 벤치마크 성능표'} style={{ padding: 24, margin: '20px 0', minWidth: 0 }}>
+    <span className="eyebrow">{source === 'recorded' ? '저장된 팀 실측 기록 · 새 워크로드 결과 아님' : '이번 실행의 실제 채점 결과'}</span>
     <h2>벤치마크 성능표</h2>
-    <p>{complete ? '세 모델의 실행 결과를 집계했습니다.' : '현재까지 반환된 결과입니다. 미완료 모델은 최종 성능으로 비교하지 마세요.'} 실행 ID: {run.id}</p>
+    <p>{source === 'recorded' ? '팀이 저장한 HumanEval 실행 기록입니다. 새로 입력한 작업은 아직 평가하지 않았습니다. 출처: ' : complete ? '세 모델의 실행 결과를 집계했습니다. 실행 ID: ' : '현재까지 반환된 결과입니다. 미완료 모델은 최종 성능으로 비교하지 마세요. 실행 ID: '}{run.id}</p>
     <div className="he-table-scroll" tabIndex={0}>
       <table><caption className="sr-only">이번 실행의 모델별 성능 비교</caption><thead><tr><th scope="col">모델</th><th scope="col">문제 통과</th><th scope="col">통과율</th><th scope="col">평균 응답 시간</th><th scope="col">평균 생성 토큰</th><th scope="col">진행 상태</th></tr></thead>
         <tbody>{models.map(model => <tr key={model.id}>

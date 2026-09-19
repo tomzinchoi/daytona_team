@@ -13,7 +13,8 @@ test('files can be uploaded without text, previewed, validated, and removed',asy
 test('API failures retain user input and never fabricate measurements',async({page})=>{
   await page.goto('/');await page.getByRole('textbox',{name:'반복 작업 설명'}).fill('고객 문의 분류');
   await page.getByRole('button',{name:'내 워크로드 분석',exact:true}).click();await expect(page.getByRole('alert')).toContainText('API');await expect(page.getByRole('textbox')).toHaveValue('고객 문의 분류');
-  await expect(page.getByRole('heading',{name:'벤치마크 결과가 없습니다.'})).toBeVisible();
+  await expect(page.getByRole('region',{name:'저장된 실측 성능표'})).toBeVisible();
+  await expect(page.getByRole('region',{name:'실행 벤치마크 성능표'})).toHaveCount(0);
 });
 test('provider labels are Korean while transport status values remain unchanged',async({page})=>{
   await page.route('**/runtime/api/providers',route=>route.fulfill({json:{providers:[{id:'daytona',status:'LIVE',reason:'연결 확인됨'},{id:'nosana',status:'NOT_CONFIGURED',reason:'미설정'},{id:'dnsimple',status:'ERROR',reason:'조회 오류'}]}}));

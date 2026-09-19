@@ -8,6 +8,8 @@ test('restored completed live run automatically shows current performance and en
   await page.goto(`/?liveRun=${id}`);
   const table = page.getByRole('region', { name: '실행 벤치마크 성능표' });
   await expect(table).toBeVisible();
+  await expect(page.locator('.workload-grid').getByRole('region', { name: '실행 벤치마크 성능표' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '벤치마크 결과가 없습니다.' })).toHaveCount(0);
   await expect(table.getByRole('row').filter({ hasText: 'Gemma 4 E2B' })).toContainText('2.966초');
   await expect(table.getByRole('row').filter({ hasText: 'Qwen 3.5 9B' })).toContainText('14.25초');
   await expect(table.getByRole('row').filter({ hasText: 'GPT-OSS 20B' })).toContainText('2.089초');
@@ -16,7 +18,24 @@ test('restored completed live run automatically shows current performance and en
   await expect(table).toBeVisible();
   await page.getByRole('button', { name: '새 벤치마크' }).click();
   await expect(table).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '성능 비교 04' })).toBeDisabled();
+  await expect(page.getByRole('region', { name: '저장된 실측 성능표' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '성능 비교 04' })).toBeEnabled();
+});
+test('live results keep updating after opening performance comparison', async ({ page }) => {
+  let finish = false;
+  await page.route('**/api/live?*', route => route.fulfill({ json: {
+    id, status: finish ? 'completed' : 'running', total: 12,
+    rows: finish ? rows : rows.slice(0, 1),
+  } }));
+  await page.goto(`/?liveRun=${id}`);
+  const table = page.getByRole('region', { name: '실행 벤치마크 성능표' });
+  await expect(table).toContainText('현재까지 반환된 결과');
+  await page.getByRole('button', { name: '성능 비교 04' }).click();
+  finish = true;
+  await expect(table).toContainText('세 모델의 실행 결과를 집계했습니다.', { timeout: 10000 });
+  await expect(table.getByText('100%', { exact: true })).toHaveCount(3);
+  await page.getByRole('button', { name: '워크로드 01' }).click();
+  await expect(page.locator('.workload-grid').getByRole('region', { name: '실행 벤치마크 성능표' })).toContainText('14.25초');
 });
 test('partial failed run preserves missing response timing and fits mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

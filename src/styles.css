@@ -2105,6 +2105,8 @@ h1,h2,h3,p { word-break:keep-all; overflow-wrap:anywhere; }
 .space .view-controls button { color:white; }
 .space .view-controls button[aria-pressed=true] { color:#6647a2; background:white; }
 .workload-grid { grid-template-columns:minmax(310px,.8fr) minmax(0,1.4fr); }
+.workbench-performance { min-width:0; align-self:start; }
+.workload-grid > .he-details { min-width:0; align-self:start; }
 .workload-card h2 { font-size:31px; line-height:1.5; }
 .workload-card textarea { background:#fff; color:#252d45; font-size:14px; }
 .upload-zone { border:1px dashed #aaa0d5; border-radius:12px; padding:20px 12px; display:flex; align-items:center; flex-direction:column; gap:10px; background:#faf8ff; color:#7560ae; text-align:center; }

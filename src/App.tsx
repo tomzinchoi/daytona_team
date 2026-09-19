@@ -22,6 +22,7 @@ import {
 import BenchmarkSpace from "./components/BenchmarkSpace";
 import LiveHumanEval from './components/LiveHumanEval';
 import LivePerformance, { type LiveRun } from './components/LivePerformance';
+import RecordedPerformance from './components/RecordedPerformance';
 import { ACTIVE_MODELS, isActiveModel } from './active-models';
 import AnalysisProgress from "./components/AnalysisProgress";
 import WorkloadUpload from "./components/WorkloadUpload";
@@ -351,11 +352,10 @@ export default function App() {
       id === "workload" ||
       id === "humaneval" ||
       id === "providers" ||
-      (id === "results" && Boolean(liveRun?.rows.length) && ['completed', 'failed'].includes(liveRun!.status)) ||
+      id === "results" ||
       (id === "selection" && Boolean(production)) ||
       (runStarted &&
         (id === "search" ||
-          (id === "results" && measured.length > 0) ||
           (id === "benchmark" && snapshot.phase !== "search") ||
           (id === "recommendations" && snapshot.phase === "results")))
     );
@@ -511,9 +511,9 @@ export default function App() {
           {snapshot.warnings && snapshot.warnings.length > 0 && <div className="evidence-warnings" role="status">{snapshot.warnings.map((warning, i) => <p key={i}>{warning}</p>)}</div>}
           {screen === "humaneval" && <Suspense fallback={<p role="status">팀 실행 기록을 불러오는 중…</p>}><HumanEvalResults onUse={modelId => { try { setTaskInput(composeWorkload(workload, files)); setTaskModel(modelId); setScreen('execution'); } catch (e) { setError(e instanceof Error ? e.message : '작업 입력을 확인해 주세요.'); } }} /></Suspense>}
           {screen === "execution" && <Suspense fallback={<p role="status">작업 화면을 불러오는 중…</p>}><SelectedModelTask key={taskModel} modelId={taskModel} initialWorkload={taskInput} onBack={() => setScreen('humaneval')} /></Suspense>}
+          <div hidden={screen !== 'workload'}><LiveHumanEval key={uploadGeneration} onResult={setLiveRun} /></div>
           {screen === "workload" && (
             <>
-              <LiveHumanEval key={uploadGeneration} onResult={setLiveRun} />
               <div className="workload-grid">
                 <section className="workload-card panel">
                   <div className="section-number"> 01 / 워크로드 입력 </div>
@@ -561,13 +561,13 @@ export default function App() {
                   <ul aria-label="실제 실행 모델">{ACTIVE_MODELS.map(model => <li key={model.id}>{model.name} <code>{model.model}</code></li>)}</ul>
                   <p className="workload-explanation">비교 대상은 위 세 모델뿐입니다. 저장된 실행 기록을 확인할 수 있으며, 아직 실행하지 않은 워크로드의 성능은 표시하지 않습니다.</p>
                 </section>
-                <BenchmarkSpace
+                {liveRun ? <LivePerformance run={liveRun} /> : snapshot.configurations.length === 0 ? <RecordedPerformance onDetails={() => setScreen('humaneval')} /> : <BenchmarkSpace
                   configurations={snapshot.configurations}
                   selected={selected?.id ?? ""}
                   onSelect={setSelectedId}
                   source={snapshot.source}
                   resourceAxis={snapshot.resourceAxis}
-                />
+                />}
               </div>
               <div className="principles">
                 <div>
@@ -787,8 +787,9 @@ export default function App() {
             </>
           )}
 
-          {screen === "results" && liveRun && liveRun.rows.length > 0 && <LivePerformance run={liveRun} />}
-          {(screen === "results" || screen === "recommendations") && selected && !liveRun?.rows.length && (
+          {screen === "results" && liveRun && <LivePerformance run={liveRun} />}
+          {screen === "results" && !liveRun && !selected && <RecordedPerformance onDetails={() => setScreen('humaneval')} />}
+          {(screen === "results" || screen === "recommendations") && selected && !liveRun && (
             <>
               <div className="results-grid">
                 <BenchmarkSpace
