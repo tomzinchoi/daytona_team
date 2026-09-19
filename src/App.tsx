@@ -421,6 +421,8 @@ export default function App() {
           {navigation.map(({ id, label, icon: Icon, number }) => (
             <button
               key={id}
+              aria-label={`${label} ${number}`}
+              data-screen={id}
               disabled={!canVisit(id)}
               className={screen === id ? "active" : ""}
               onClick={() => setScreen(id)}
