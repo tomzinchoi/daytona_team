@@ -3,7 +3,7 @@
   "framework": "vite",
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
-  "functions": { "api/gateway.mjs": { "maxDuration": 60 }, "api/task.mjs": { "maxDuration": 60 } },
+  "functions": { "api/gateway.mjs": { "maxDuration": 60 }, "api/task.mjs": { "maxDuration": 60 }, "api/grade.mjs": { "maxDuration": 60 }, "api/live.mjs": { "maxDuration": 30 } },
   "rewrites": [
     { "source": "/engine/api/:path*", "destination": "/api/gateway?service=engine&path=:path*" },
     { "source": "/runtime/api/:path*", "destination": "/api/gateway?service=runtime&path=:path*" },

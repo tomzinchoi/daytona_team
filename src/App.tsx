@@ -20,6 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import BenchmarkSpace from "./components/BenchmarkSpace";
+import LiveHumanEval from './components/LiveHumanEval';
 import { ACTIVE_MODELS, isActiveModel } from './active-models';
 import AnalysisProgress from "./components/AnalysisProgress";
 import WorkloadUpload from "./components/WorkloadUpload";
@@ -506,6 +507,7 @@ export default function App() {
           {screen === "execution" && <Suspense fallback={<p role="status">작업 화면을 불러오는 중…</p>}><SelectedModelTask key={taskModel} modelId={taskModel} initialWorkload={taskInput} onBack={() => setScreen('humaneval')} /></Suspense>}
           {screen === "workload" && (
             <>
+              <LiveHumanEval />
               <div className="workload-grid">
                 <section className="workload-card panel">
                   <div className="section-number"> 01 / 워크로드 입력 </div>
@@ -514,7 +516,8 @@ export default function App() {
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
-                      if (apiConfigured) void begin(false);
+                      if (workload.trim().startsWith('[')) { setError(''); window.dispatchEvent(new CustomEvent('atlas-live-run', {detail:workload})); }
+                      else if (apiConfigured) void begin(false);
                       else {
                         setError(
                           "실제 분석 API가 연결되지 않아 워크로드를 실행하지 않았습니다. 입력은 유지됩니다. 모델 준비와 전체 실행 흐름 연결이 필요합니다.",
