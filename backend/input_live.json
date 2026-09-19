@@ -1,0 +1,30 @@
+[
+  {
+    "task_id": "HumanEval/53",
+    "name": "두 수 더하기",
+    "prompt": "\n\ndef add(x: int, y: int):\n    \"\"\"Add two numbers x and y\n    >>> add(2, 3)\n    5\n    >>> add(5, 7)\n    12\n    \"\"\"\n",
+    "test": "\n\nMETADATA = {}\n\n\ndef check(candidate):\n    import random\n\n    assert candidate(0, 1) == 1\n    assert candidate(1, 0) == 1\n    assert candidate(2, 3) == 5\n    assert candidate(5, 7) == 12\n    assert candidate(7, 5) == 12\n\n    for i in range(100):\n        x, y = random.randint(0, 1000), random.randint(0, 1000)\n        assert candidate(x, y) == x + y\n\n",
+    "entry_point": "add"
+  },
+  {
+    "task_id": "HumanEval/23",
+    "name": "문자열 길이",
+    "prompt": "\n\ndef strlen(string: str) -> int:\n    \"\"\" Return length of given string\n    >>> strlen('')\n    0\n    >>> strlen('abc')\n    3\n    \"\"\"\n",
+    "test": "\n\nMETADATA = {\n    'author': 'jt',\n    'dataset': 'test'\n}\n\n\ndef check(candidate):\n    assert candidate('') == 0\n    assert candidate('x') == 1\n    assert candidate('asdasnakj') == 9\n",
+    "entry_point": "strlen"
+  },
+  {
+    "task_id": "HumanEval/45",
+    "name": "삼각형 넓이",
+    "prompt": "\n\ndef triangle_area(a, h):\n    \"\"\"Given length of a side and high return area for a triangle.\n    >>> triangle_area(5, 3)\n    7.5\n    \"\"\"\n",
+    "test": "\n\nMETADATA = {}\n\n\ndef check(candidate):\n    assert candidate(5, 3) == 7.5\n    assert candidate(2, 2) == 2.0\n    assert candidate(10, 8) == 40.0\n\n",
+    "entry_point": "triangle_area"
+  },
+  {
+    "task_id": "HumanEval/7",
+    "name": "글자 포함 필터",
+    "prompt": "from typing import List\n\n\ndef filter_by_substring(strings: List[str], substring: str) -> List[str]:\n    \"\"\" Filter an input list of strings only for ones that contain given substring\n    >>> filter_by_substring([], 'a')\n    []\n    >>> filter_by_substring(['abc', 'bacd', 'cde', 'array'], 'a')\n    ['abc', 'bacd', 'array']\n    \"\"\"\n",
+    "test": "\n\nMETADATA = {\n    'author': 'jt',\n    'dataset': 'test'\n}\n\n\ndef check(candidate):\n    assert candidate([], 'john') == []\n    assert candidate(['xxx', 'asd', 'xxy', 'john doe', 'xxxAAA', 'xxx'], 'xxx') == ['xxx', 'xxxAAA', 'xxx']\n    assert candidate(['xxx', 'asd', 'aaaxxy', 'john doe', 'xxxAAA', 'xxx'], 'xx') == ['xxx', 'aaaxxy', 'xxxAAA', 'xxx']\n    assert candidate(['grunt', 'trumpet', 'prune', 'gruesome'], 'run') == ['grunt', 'prune']\n",
+    "entry_point": "filter_by_substring"
+  }
+]
