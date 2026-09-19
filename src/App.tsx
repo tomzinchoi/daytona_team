@@ -45,7 +45,9 @@ import {
 } from "./domain";
 
 const HumanEvalResults = lazy(() => import('./components/HumanEvalResults'));
+const SelectedModelTask = lazy(() => import('./components/SelectedModelTask'));
 type Screen =
+  | "execution"
   | "humaneval"
   | "workload"
   | "search"
@@ -81,6 +83,8 @@ const navigation: {
 ];
 export default function App() {
   const [screen, setScreen] = useState<Screen>("workload");
+  const [taskModel, setTaskModel] = useState<string>('gemma4-e2b');
+  const [taskInput, setTaskInput] = useState('');
   const [workload, setWorkload] = useState("");
   const [files, setFiles] = useState<WorkloadFile[]>([]);
   const [readingFiles, setReadingFiles] = useState(false);
@@ -352,6 +356,7 @@ export default function App() {
     );
   }
   const headings: Record<Screen, [string, string]> = {
+    execution: ['비교에서 실제 작업으로.', '선택한 모델로 내 문제를 처리하고 결과를 받아보세요.'],
     humaneval: ["같은 문제, 세 모델의 실제 기록.", "팀 백엔드의 HumanEval 결과를 문제별로 비교하고 새 실행 기록을 불러오세요."],
     workload: [
       "배포 전에, 내 작업으로 검증하세요.",
@@ -497,7 +502,8 @@ export default function App() {
 
           {(busy || (!demo && snapshot.phase === 'benchmark' && !pollingStopped)) && <AnalysisProgress running={snapshot.phase === 'benchmark'} />}
           {snapshot.warnings && snapshot.warnings.length > 0 && <div className="evidence-warnings" role="status">{snapshot.warnings.map((warning, i) => <p key={i}>{warning}</p>)}</div>}
-          {screen === "humaneval" && <Suspense fallback={<p role="status">팀 실행 기록을 불러오는 중…</p>}><HumanEvalResults /></Suspense>}
+          {screen === "humaneval" && <Suspense fallback={<p role="status">팀 실행 기록을 불러오는 중…</p>}><HumanEvalResults onUse={modelId => { try { setTaskInput(composeWorkload(workload, files)); setTaskModel(modelId); setScreen('execution'); } catch (e) { setError(e instanceof Error ? e.message : '작업 입력을 확인해 주세요.'); } }} /></Suspense>}
+          {screen === "execution" && <Suspense fallback={<p role="status">작업 화면을 불러오는 중…</p>}><SelectedModelTask key={taskModel} modelId={taskModel} initialWorkload={taskInput} onBack={() => setScreen('humaneval')} /></Suspense>}
           {screen === "workload" && (
             <>
               <div className="workload-grid">

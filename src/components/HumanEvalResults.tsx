@@ -10,7 +10,7 @@ const taskNames = new Map(liveTasks.map(t => [t.task_id, t.name]));
 const format = (value: number | null, digits = 2) => value === null ? '미기록' : value.toLocaleString('ko-KR', { maximumFractionDigits: digits });
 const status = (row: HumanEvalRow) => row.passed ? '통과' : /timed? out|timeout/i.test(row.error ?? '') ? '시간 초과' : '실패';
 
-export default function HumanEvalResults() {
+export default function HumanEvalResults({ onUse }: { onUse?: (modelId: string) => void }) {
   const [dataset, setDataset] = useState({ rows: recordedRows, name: 'backend/results_live.jsonl', imported: false });
   const [selected, setSelected] = useState(recordedRows[0].model);
   const [error, setError] = useState('');
@@ -81,6 +81,7 @@ export default function HumanEvalResults() {
       </section>
     </div>
     <section className="panel he-details"><h2>{model.name} · 문제별 근거</h2><p>통과율은 개별 assert 수가 아닌 문제 단위 통과 여부입니다. 아래 표는 선택한 기록 전체를 표시합니다.</p>
+      {onUse && <button className="button primary" onClick={() => onUse(model.id)}>이 모델로 내 작업 이어가기</button>}
       <div className="he-table-scroll" tabIndex={0} aria-label="HumanEval 문제별 결과"><table><thead><tr><th>문제</th><th>결과</th><th>모델 응답</th><th>생성 토큰</th><th>실행 구간</th></tr></thead><tbody>{model.rows.map(r => <tr key={r.task_id}><th>{taskNames.get(r.task_id) ?? r.task_id}<small>{r.task_id}</small></th><td className={r.passed ? 'he-good' : 'he-warning'}>{status(r)}</td><td>{r.time_ms === null ? '미기록' : `${format(r.time_ms / 1000)}초`}</td><td>{format(r.tokens, 0)}</td><td>{format(r.start_s)}–{format(r.end_s)}초</td></tr>)}</tbody></table></div>
       {model.rows.map(r => <details key={r.task_id}><summary>{r.task_id} · 생성 코드 / 채점 오류</summary>{r.error && <p className="he-warning">{r.error}</p>}<pre><code>{r.code || '생성 코드가 기록되지 않았습니다.'}</code></pre></details>)}
     </section>
