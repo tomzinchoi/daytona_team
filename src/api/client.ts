@@ -15,12 +15,12 @@ async function request(path: string, init?: RequestInit): Promise<Snapshot> {
   });
   if (!response.ok)
     throw new Error(
-      `Benchmark API returned ${response.status}. Please retry or open the labeled demo.`,
+      `벤치마크 API 오류 (${response.status}). 다시 시도하거나 예시 데모를 확인해 주세요.`,
     );
   const result = snapshotSchema.safeParse(await response.json());
   if (!result.success || result.data.source !== "api")
     throw new Error(
-      "The benchmark API returned an unsupported evidence contract. No results were substituted.",
+      "API 결과 형식을 확인할 수 없습니다. 예시 데이터로 대체하지 않았습니다.",
     );
   return result.data;
 }

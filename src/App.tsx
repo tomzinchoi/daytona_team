@@ -20,6 +20,9 @@ import {
   Zap,
 } from "lucide-react";
 import BenchmarkSpace from "./components/BenchmarkSpace";
+import WorkloadUpload from "./components/WorkloadUpload";
+import { composeWorkload, type WorkloadFile } from "./workload-files";
+import { labelKo } from "./labels";
 import ConfigurationDetail, {
   EvidenceBadge,
   Selection,
@@ -33,6 +36,7 @@ import {
 import { demoSnapshot, DEMO_WORKLOAD } from "./data/demo";
 import {
   topologyLabel,
+  emptySnapshot,
   type Configuration,
   type Snapshot,
 } from "./domain";
@@ -51,31 +55,31 @@ const navigation: {
   icon: typeof Box;
   number: string;
 }[] = [
-  { id: "workload", label: "Workload", icon: Terminal, number: "01" },
-  { id: "search", label: "Architecture search", icon: GitBranch, number: "02" },
+  { id: "workload", label: "워크로드", icon: Terminal, number: "01" },
+  { id: "search", label: "아키텍처 탐색", icon: GitBranch, number: "02" },
   {
     id: "benchmark",
-    label: "Controlled benchmark",
+    label: "벤치마크 실행",
     icon: FlaskConical,
     number: "03",
   },
-  { id: "results", label: "Benchmark space", icon: Box, number: "04" },
+  { id: "results", label: "성능 비교", icon: Box, number: "04" },
   {
     id: "recommendations",
-    label: "Recommendations",
+    label: "추천 구성",
     icon: Target,
     number: "05",
   },
-  { id: "selection", label: "Your configuration", icon: Layers3, number: "06" },
-  { id: "providers", label: "Providers", icon: Server, number: "07" },
+  { id: "selection", label: "선택한 구성", icon: Layers3, number: "06" },
+  { id: "providers", label: "인프라 상태", icon: Server, number: "07" },
 ];
 export default function App() {
   const [screen, setScreen] = useState<Screen>("workload");
   const [workload, setWorkload] = useState("");
-  const [snapshot, setSnapshot] = useState<Snapshot>(() =>
-    demoSnapshot(DEMO_WORKLOAD, "search"),
-  );
-  const [selectedId, setSelectedId] = useState("08");
+  const [files, setFiles] = useState<WorkloadFile[]>([]);
+  const [readingFiles, setReadingFiles] = useState(false);
+  const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot);
+  const [selectedId, setSelectedId] = useState("");
   const [production, setProduction] = useState<Configuration | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -120,7 +124,7 @@ export default function App() {
     (c) => c.selectedForBenchmark,
   );
   const measured = snapshot.configurations.filter(
-    (c) => c.evidence === "measured",
+    (c) => (demo ? c.evidence === "illustrative" : c.evidence === "measured") && (c.status === "completed" || c.status === "failed"),
   );
   const exploredCount =
     snapshot.candidateCatalog?.length ?? snapshot.configurations.length;
@@ -135,7 +139,7 @@ export default function App() {
     ["performance", "balanced", "efficient"] as const
   ).map((role) => ({
     role,
-    config: snapshot.configurations.find((c) =>
+    config: measured.find((c) =>
       snapshot.recommendations
         ? c.id ===
           snapshot.recommendations.find((r) => r.category === role)
@@ -151,7 +155,7 @@ export default function App() {
     } catch {
       setProviderReports(null);
       setProviderError(
-        "Runtime status is unavailable. Start the runtime on port 3001 to verify connections.",
+        "런타임 상태를 조회할 수 없습니다. 실행 서비스 연결을 확인해 주세요.",
       );
     }
   }
@@ -170,7 +174,7 @@ export default function App() {
       setScreen("search");
     } catch (e) {
       if (token === generation.current)
-        setError(e instanceof Error ? e.message : "Engine unavailable.");
+        setError(e instanceof Error ? e.message : "분석 엔진에 연결할 수 없습니다.");
     } finally {
       if (token === generation.current) setBusy(false);
     }
@@ -191,7 +195,7 @@ export default function App() {
       } catch (e) {
         if (!cancelled && token === generation.current) {
           setError(
-            e instanceof Error ? e.message : "Unable to refresh benchmark.",
+            e instanceof Error ? e.message : "벤치마크 상태를 새로고침하지 못했습니다.",
           );
           setPollingStopped(true);
         }
@@ -205,9 +209,11 @@ export default function App() {
   }, [demo, snapshot.id, snapshot.phase, pollingStopped]);
 
   async function begin(useDemo: boolean) {
-    const value = useDemo ? DEMO_WORKLOAD : workload.trim();
+    let value: string;
+    try { value = useDemo ? DEMO_WORKLOAD : composeWorkload(workload, files); }
+    catch (e) { setError(e instanceof Error ? e.message : '입력을 확인해 주세요.'); return; }
     if (!value) {
-      setError("Describe a recurring workload to continue.");
+      setError("작업 설명을 입력하거나 워크로드 파일을 첨부해 주세요.");
       return;
     }
     const token = ++generation.current;
@@ -237,7 +243,7 @@ export default function App() {
     } catch (e) {
       if (token === generation.current)
         setError(
-          e instanceof Error ? e.message : "Unable to start the benchmark.",
+          e instanceof Error ? e.message : "벤치마크를 시작하지 못했습니다.",
         );
     } finally {
       if (token === generation.current) setBusy(false);
@@ -248,7 +254,7 @@ export default function App() {
     const token = generation.current;
     if (snapshot.integration === "engine-screening") {
       setError(
-        "Architecture search is connected. Complete workload execution and engine-scored evidence are not yet connected to this frontend. Runtime case checks cannot be substituted for full-workload results. Use the labeled demo to explore results.",
+        "아키텍처 탐색은 연결됐지만 전체 워크로드 실행과 실측 결과 연동은 아직 준비 중입니다. 예시 결과는 데모에서 확인할 수 있습니다.",
       );
       return;
     }
@@ -272,7 +278,7 @@ export default function App() {
         setError(
           e instanceof Error
             ? e.message
-            : "Unable to start controlled benchmark.",
+            : "벤치마크 실행을 시작하지 못했습니다.",
         );
     } finally {
       if (token === generation.current) setBusy(false);
@@ -280,11 +286,13 @@ export default function App() {
   }
   function reset() {
     generation.current++;
-    setSnapshot(demoSnapshot(DEMO_WORKLOAD, "search"));
+    setSnapshot(emptySnapshot());
+    setSelectedId("");
     setScreen("workload");
     setRunStarted(false);
     setProduction(null);
     setWorkload("");
+    setFiles([]);
     setError("");
     setBusy(false);
     setPollingStopped(false);
@@ -301,39 +309,39 @@ export default function App() {
       (id === "selection" && Boolean(production)) ||
       (runStarted &&
         (id === "search" ||
-          id === "results" ||
+          (id === "results" && measured.length > 0) ||
           (id === "benchmark" && snapshot.phase !== "search") ||
           (id === "recommendations" && snapshot.phase === "results")))
     );
   }
   const headings: Record<Screen, [string, string]> = {
     workload: [
-      "Evidence before deployment.",
-      "Benchmark open models on your real workload before you deploy them.",
+      "배포 전에, 내 작업으로 검증하세요.",
+      "내 워크로드에 맞는 오픈 모델과 실행 구성을 비교하세요.",
     ],
     search: [
-      "Explore the possibilities.",
-      "One workload. Multiple models, agent architectures, and compute configurations.",
+      "가능한 구성을 한눈에 살펴보세요.",
+      "하나의 워크로드로 모델·에이전트·컴퓨팅 구성을 비교합니다.",
     ],
     benchmark: [
-      "Same workload. Controlled conditions.",
-      "Move from model predictions to benchmark evidence.",
+      "동일한 작업, 동일한 평가 기준.",
+      "예측에서 실제 벤치마크 근거로 이어갑니다.",
     ],
     results: [
-      "Your workload. Every trade-off.",
-      "Explore the space between quality, latency, and resources.",
+      "품질과 속도, 비용의 균형을 찾으세요.",
+      "품질·지연 시간·자원 사용량의 차이를 확인하세요.",
     ],
     recommendations: [
-      "The right trade-off is yours.",
-      "Best among evaluated configurations. Choose what matters to your workload.",
+      "내 우선순위에 맞는 선택.",
+      "평가한 구성 안에서 내 워크로드에 가장 적합한 조합을 선택하세요.",
     ],
     selection: [
-      "Ready for your next step.",
-      "A complete configuration, with the evidence behind your choice.",
+      "다음 단계를 위한 구성이 준비됐습니다.",
+      "선택한 구성과 그 근거를 함께 확인하세요.",
     ],
     providers: [
-      "Infrastructure, in the open.",
-      "A clear view of what is connected and what powers each part of the workflow.",
+      "연결 상태를 투명하게 확인하세요.",
+      "각 단계에서 사용하는 서비스와 실제 연결 상태입니다.",
     ],
   };
   return (
@@ -356,13 +364,12 @@ export default function App() {
           <span className="workspace-icon">
             <Command size={15} />
           </span>
-          <div>
-            Personal workspace<small>Configuration intelligence</small>
+          <div> 개인 워크스페이스 <small> 워크로드 기반 구성 비교 </small>
           </div>
           <ChevronRight size={13} />
         </div>
-        <div className="nav-label">WORKBENCH</div>
-        <nav aria-label="Main navigation">
+        <div className="nav-label"> 작업 공간 </div>
+        <nav aria-label="주요 메뉴">
           {navigation.map(({ id, label, icon: Icon, number }) => (
             <button
               key={id}
@@ -377,39 +384,30 @@ export default function App() {
           ))}
         </nav>
         <button className="new-benchmark" onClick={reset}>
-          <Plus size={16} />
-          New benchmark
-        </button>
+          <Plus size={16} /> 새 벤치마크 </button>
         <div className="sidebar-bottom">
           <div className="runtime-mini">
             <span className="status-dot" />
-            <span>Daytona runtime</span>
+            <span> Daytona 런타임 </span>
             <small>
-              {providerReports?.find((p) => p.id === "daytona")?.status ===
-              "LIVE"
-                ? "CONNECTED"
-                : "UNVERIFIED"}
+              {providerReports?.find((p) => p.id === "daytona")?.status === "LIVE"
+                ? "연결됨"
+                : "확인 전"}
             </small>
           </div>
-          <p>
-            Less guesswork.
-            <br />
-            Better configurations.
-          </p>
-          <span className="mono dim">ATLAS / HACKATHON EDITION</span>
+          <p> 추측은 줄이고, <br /> 더 나은 구성을 선택하세요. </p>
+          <span className="mono dim"> ATLAS / 해커톤 에디션 </span>
         </div>
       </aside>
       <div className="main-shell">
         <header className="topbar">
-          <div className="breadcrumbs">
-            Workspace
-            <ChevronRight size={13} />
+          <div className="breadcrumbs"> 워크스페이스 <ChevronRight size={13} />
             <span>{navigation.find((n) => n.id === screen)?.label}</span>
           </div>
           <div className="topbar-right">
             <span className={`badge ${demo ? "demo" : "api"}`}>
               <span className="status-dot" />
-              {demo ? "DEMO ENVIRONMENT" : "API CONNECTED"}
+              {snapshot.source === "empty" ? "아직 실행하지 않음" : demo ? "데모 미리보기" : snapshot.integration === "engine-screening" ? "후보 탐색 · 미실행" : "API 데이터"}
             </span>
             <span className="avatar">AW</span>
           </div>
@@ -418,18 +416,14 @@ export default function App() {
           <div className="page-heading">
             <div>
               <div className="eyebrow">
-                <span className="mini-cross">+</span>MODEL × ARCHITECTURE ×
-                COMPUTE
-              </div>
+                <span className="mini-cross">+</span> 모델 × 아키텍처 × 컴퓨팅 </div>
               <h1>{headings[screen][0]}</h1>
               <p>{headings[screen][1]}</p>
             </div>
             <button
               className="text-button"
               onClick={() => setShowProtocol(true)}
-            >
-              Benchmark protocol
-              <ArrowUpRight size={14} />
+            > 평가 기준 <ArrowUpRight size={14} />
             </button>
           </div>
           {error && (
@@ -441,11 +435,9 @@ export default function App() {
                     setError("");
                     setPollingStopped(false);
                   }}
-                >
-                  Retry status
-                </button>
+                > 상태 다시 확인 </button>
               )}
-              <button aria-label="Dismiss error" onClick={() => setError("")}>
+              <button aria-label="오류 닫기" onClick={() => setError("")}>
                 <X size={16} />
               </button>
             </div>
@@ -454,17 +446,16 @@ export default function App() {
             <div className="demo-strip">
               <span>
                 <span className="status-dot" />
-                <strong>DEMO DATA</strong>
+                <strong> 예시 데이터 </strong>
                 <span className="divider">/</span>
-                {providerReports?.find((p) => p.id === "daytona")?.status ===
-                "LIVE"
-                  ? "Daytona is connected; this demo does not use it."
-                  : "Daytona not connected to this demo."}{" "}
+                {providerReports?.find((p) => p.id === "daytona")?.status === "LIVE"
+                  ? "Daytona가 연결됐지만 이 데모에서는 사용하지 않습니다."
+                  : "이 데모는 Daytona에서 실행되지 않습니다."}{" "}
                 {screen === "benchmark"
-                  ? "Statuses below are illustrative, not live execution."
-                  : "Explore an illustrative benchmark, step by step."}
+                  ? "아래 상태는 예시이며 실제 실행 상태가 아닙니다."
+                  : "예시 벤치마크를 단계별로 살펴보세요."}
               </span>
-              <span className="mono">NO LIVE EXECUTION</span>
+              <span className="mono"> 실제 실행 아님 </span>
             </div>
           )}
 
@@ -472,51 +463,40 @@ export default function App() {
             <>
               <div className="workload-grid">
                 <section className="workload-card panel">
-                  <div className="section-number">
-                    01 / DEFINE YOUR WORKLOAD
-                  </div>
-                  <h2>
-                    What AI task do you
-                    <br />
-                    run repeatedly?
-                  </h2>
-                  <p>
-                    Find the configuration that earns its place in your stack.
-                  </p>
+                  <div className="section-number"> 01 / 워크로드 입력 </div>
+                  <h2> 반복하는 AI 작업을 <br /> 알려주세요. </h2>
+                  <p> 실제 작업에 맞는 모델과 실행 구성을 찾아보세요. </p>
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
                       if (apiConfigured) void begin(false);
                       else {
                         setError(
-                          "A benchmark API is not connected. Use the one-click example to explore explicitly labeled demo data.",
+                          "실제 분석 API가 연결되지 않아 워크로드를 실행하지 않았습니다. 입력은 유지됩니다. 모델 준비와 전체 실행 흐름 연결이 필요합니다.",
                         );
                       }
                     }}
                   >
-                    <label htmlFor="workload" className="sr-only">
-                      Recurring workload
-                    </label>
+                    <label htmlFor="workload" className="sr-only"> 반복 작업 설명 </label>
                     <textarea
                       id="workload"
                       value={workload}
                       onChange={(e) => setWorkload(e.target.value)}
-                      placeholder="Describe your task, expected output, and what success looks like…"
-                      maxLength={8000}
+                      placeholder="수행할 작업, 원하는 결과, 성공 기준을 입력하세요…"
+                      maxLength={100000}
                     />
+                    <WorkloadUpload files={files} onChange={setFiles} onReading={setReadingFiles} />
                     <button
                       className="button primary full"
                       type="submit"
-                      disabled={busy}
+                      disabled={busy || readingFiles}
                     >
-                      {busy ? "Connecting…" : "Benchmark my workload"}
+                      {busy ? "연결 중…" : "내 워크로드 분석"}
                       <ArrowRight size={16} />
                     </button>
                   </form>
                   <div className="or-rule">
-                    <span />
-                    OR TRY AN EXAMPLE
-                    <span />
+                    <span /> 선택 사항 · 실제 실행 없는 UI 데모 <span />
                   </div>
                   <button
                     className="demo-example"
@@ -527,7 +507,7 @@ export default function App() {
                       <Terminal size={19} />
                     </span>
                     <span>
-                      <strong>Repository bug fixes</strong>
+                      <strong> 데모 미리보기: 저장소 버그 수정 </strong>
                       <small>{DEMO_WORKLOAD}</small>
                     </span>
                     <ArrowUpRight size={16} />
@@ -536,18 +516,13 @@ export default function App() {
                     className="engine-example text-button"
                     onClick={() => void beginEngine()}
                     disabled={busy}
-                  >
-                    Search engine’s coding workload
-                    <ArrowUpRight size={13} />
+                  > 엔진의 코딩 워크로드 탐색 <ArrowUpRight size={13} />
                   </button>
-                  <p className="workload-explanation">
-                    We test multiple AI configurations against representative
-                    tasks under controlled conditions.
-                  </p>
+                  <p className="workload-explanation"> 실제 워크로드 실행은 아직 화면과 연결되지 않았습니다. 데모는 화면을 설명하기 위한 가상 수치입니다. </p>
                 </section>
                 <BenchmarkSpace
                   configurations={snapshot.configurations}
-                  selected={selected.id}
+                  selected={selected?.id ?? ""}
                   onSelect={setSelectedId}
                   source={snapshot.source}
                 />
@@ -556,22 +531,22 @@ export default function App() {
                 <div>
                   <GitBranch size={18} />
                   <span>
-                    <strong>Explore the architecture</strong>
-                    <small>Models, roles, and compute. Together.</small>
+                    <strong> 아키텍처 탐색 </strong>
+                    <small> 모델·역할·컴퓨팅을 함께 비교합니다. </small>
                   </span>
                 </div>
                 <div>
                   <FlaskConical size={18} />
                   <span>
-                    <strong>Measure the real trade-offs</strong>
-                    <small>Controlled tasks. Explainable evidence.</small>
+                    <strong> 실제 성능 차이 확인 </strong>
+                    <small> 일관된 작업과 설명 가능한 평가 근거. </small>
                   </span>
                 </div>
                 <div>
                   <Target size={18} />
                   <span>
-                    <strong>Choose with confidence</strong>
-                    <small>Your priorities decide the configuration.</small>
+                    <strong> 근거를 바탕으로 선택 </strong>
+                    <small> 내 우선순위로 최종 구성을 결정합니다. </small>
                   </span>
                 </div>
               </div>
@@ -586,39 +561,38 @@ export default function App() {
                 <div className="run-workload">
                   <Terminal size={17} />
                   <div>
-                    <span className="eyebrow">RECURRING WORKLOAD</span>
+                    <span className="eyebrow"> 반복 워크로드 </span>
                     <strong>{snapshot.workload}</strong>
                   </div>
                 </div>
                 <div className="run-stat">
                   <strong>{exploredCount.toString().padStart(2, "0")}</strong>
-                  <span>explored</span>
+                  <span> 탐색한 구성 </span>
                 </div>
                 <div className="run-stat">
                   <strong>
                     {candidates.length.toString().padStart(2, "0")}
                   </strong>
-                  <span>selected</span>
+                  <span> 선별한 구성 </span>
                 </div>
                 <div className="run-stat">
                   <strong className="lime">
                     {measured.length.toString().padStart(2, "0")}
                   </strong>
-                  <span>{demo ? "demo results" : "measured"}</span>
+                  <span>{demo ? "예시 결과" : "실측 결과"}</span>
                 </div>
               </div>
             )}
 
-          {screen === "search" && (
+          {screen === "search" && selected && (
             <>
               <section className="search-panel panel">
                 <header className="section-header">
                   <div>
-                    <span className="eyebrow">02 / ARCHITECTURE SEARCH</span>
-                    <h2>{exploredCount} configurations explored.</h2>
-                    <p>
-                      Top {candidates.length} selected for{" "}
-                      {demo ? "the illustrative benchmark" : "live benchmark"}.
+                    <span className="eyebrow"> 02 / 아키텍처 탐색 </span>
+                    <h2>{exploredCount} 개 구성을 탐색했습니다. </h2>
+                    <p> 상위 {candidates.length} 개를 선별했습니다. {" "}
+                      {demo ? "예시 벤치마크" : "실제 벤치마크"}.
                     </p>
                   </div>
                   <button
@@ -627,10 +601,10 @@ export default function App() {
                     disabled={busy || snapshot.phase !== "search"}
                   >
                     {busy
-                      ? "Starting…"
+                      ? "시작 중…"
                       : demo
-                        ? "Preview benchmark stages"
-                        : "Start Daytona benchmark"}
+                        ? "벤치마크 단계 미리보기"
+                        : "Daytona 벤치마크 시작"}
                     <ArrowRight size={15} />
                   </button>
                 </header>
@@ -650,18 +624,16 @@ export default function App() {
                           <span className="mono">{entry.id}</span>
                           {c?.selectedForBenchmark ? (
                             <span className="shortlist-label">
-                              <Check size={12} />
-                              SHORTLISTED
-                            </span>
+                              <Check size={12} /> 선별됨 </span>
                           ) : (
-                            <span className="mono dim">PREDICTED</span>
+                            <span className="mono dim"> 예측 </span>
                           )}
                         </div>
                         <strong>{entry.topology}</strong>
                         <span>
                           {c
-                            ? `${c.evidence.toUpperCase()} · ${c.quality}% · ${c.latency}s`
-                            : "Metrics not returned by engine"}
+                            ? demo ? `예시 · ${c.quality}% · ${c.latency}초` : c.evidence === "measured" ? `실측 · ${c.quality}% · ${c.latency}초` : "후보 구성 · 아직 벤치마크하지 않음"
+                            : "엔진에서 지표를 반환하지 않았습니다."}
                         </span>
                       </button>
                     );
@@ -684,36 +656,33 @@ export default function App() {
             </>
           )}
 
-          {screen === "benchmark" && (
+          {screen === "benchmark" && selected && (
             <>
               <section className="benchmark-panel panel">
                 <header className="section-header">
                   <div>
-                    <span className="eyebrow">03 / CONTROLLED BENCHMARK</span>
-                    <h2>
-                      Powered by{" "}
+                    <span className="eyebrow"> 03 / 벤치마크 실행 </span>
+                    <h2> 실행 환경: {" "}
                       <span className="daytona-wordmark">
                         Daytona<span>▰</span>
                       </span>
                     </h2>
                     <p>
                       {demo
-                        ? "Static demo stages. Advance to reveal illustrative results."
-                        : "Status is reported directly by the benchmark API."}
+                        ? "예시 실행 단계입니다. 다음 단계에서 예시 결과를 확인하세요."
+                        : "벤치마크 API가 반환한 실제 상태입니다."}
                     </p>
                   </div>
                   {demo ? (
                     <button
                       className="button primary"
                       onClick={() => void advance()}
-                    >
-                      Reveal demo results
-                      <ArrowRight size={16} />
+                    > 예시 결과 보기 <ArrowRight size={16} />
                     </button>
                   ) : (
                     <span className="badge api">
                       <Radio size={12} />
-                      {pollingStopped ? "UPDATES PAUSED" : "API STATUS"}
+                      {pollingStopped ? "상태 갱신 일시 중지" : "API 상태"}
                     </span>
                   )}
                 </header>
@@ -724,8 +693,8 @@ export default function App() {
                       <h3>{topologyLabel(c)}</h3>
                       <div className={`stage-status ${c.status}`}>
                         <CircleDot size={14} />
-                        {demo ? "DEMO · " : ""}
-                        {c.status.toUpperCase()}
+                        {demo ? "예시 · " : ""}
+                        {labelKo(c.status)}
                       </div>
                       <div className="stage-track">
                         {[
@@ -774,7 +743,7 @@ export default function App() {
             </>
           )}
 
-          {(screen === "results" || screen === "recommendations") && (
+          {(screen === "results" || screen === "recommendations") && selected && (
             <>
               <div className="results-grid">
                 <BenchmarkSpace
@@ -792,12 +761,11 @@ export default function App() {
               <section className="recommendations">
                 <header className="recommendation-heading">
                   <div>
-                    <span className="eyebrow">FIND YOUR OPERATING POINT</span>
-                    <h2>
-                      Three ways forward<span>.</span>
+                    <span className="eyebrow"> 나에게 맞는 실행 구성 </span>
+                    <h2> 세 가지 선택 기준 <span>.</span>
                     </h2>
                   </div>
-                  <p>Best among evaluated configurations.</p>
+                  <p> 이번 워크로드에서 평가한 구성 간 비교입니다. </p>
                 </header>
                 {recommendations.some((r) => r.config) ? (
                   <div className="recommendation-grid">
@@ -816,10 +784,10 @@ export default function App() {
                               ) : (
                                 <Cpu size={15} />
                               )}
-                              <strong>{role.toUpperCase()}</strong>
+                              <strong>{labelKo(role)}</strong>
                             </span>
                             {role === "balanced" && (
-                              <span className="suggested">SUGGESTED</span>
+                              <span className="suggested"> 추천 </span>
                             )}
                           </div>
                           <h3>{config.name}</h3>
@@ -830,14 +798,14 @@ export default function App() {
                                 {config.quality}
                                 <small>%</small>
                               </strong>
-                              <span>Quality</span>
+                              <span> 품질 </span>
                             </div>
                             <div>
                               <strong>
                                 {config.latency}
                                 <small>s</small>
                               </strong>
-                              <span>Latency</span>
+                              <span> 지연 시간 </span>
                             </div>
                             <div>
                               <strong>
@@ -845,7 +813,7 @@ export default function App() {
                               </strong>
                               <span>
                                 {config.resource.unit}
-                                {config.resource.estimated ? " est." : ""}
+                                {config.resource.estimated ? " · 추정" : ""}
                               </span>
                             </div>
                           </div>
@@ -853,9 +821,7 @@ export default function App() {
                           <button
                             className={`button full ${role === "balanced" ? "primary" : "secondary"}`}
                             onClick={() => choose(config)}
-                          >
-                            Use this configuration
-                            <ArrowUpRight size={15} />
+                          > 이 구성 선택 <ArrowUpRight size={15} />
                           </button>
                         </article>
                       ) : (
@@ -863,12 +829,9 @@ export default function App() {
                           key={role}
                           className="recommendation-card unavailable"
                         >
-                          <span className="eyebrow">{role.toUpperCase()}</span>
-                          <h3>Not available</h3>
-                          <p>
-                            The API has not returned comparable evidence for
-                            this category.
-                          </p>
+                          <span className="eyebrow">{labelKo(role)}</span>
+                          <h3> 정보 없음 </h3>
+                          <p> 이 항목을 비교할 수 있는 평가 근거가 아직 없습니다. </p>
                         </article>
                       ),
                     )}
@@ -876,11 +839,8 @@ export default function App() {
                 ) : (
                   <div className="empty-state panel">
                     <FlaskConical />
-                    <h3>Evidence comes first.</h3>
-                    <p>
-                      Recommendations appear when the benchmark API returns
-                      them.
-                    </p>
+                    <h3> 측정 근거가 먼저입니다. </h3>
+                    <p> 벤치마크 API에서 추천 결과를 받으면 표시됩니다. </p>
                     <button
                       className="button secondary"
                       onClick={() =>
@@ -888,17 +848,12 @@ export default function App() {
                           snapshot.phase === "search" ? "search" : "benchmark",
                         )
                       }
-                    >
-                      Continue benchmark
-                      <ArrowRight size={15} />
+                    > 벤치마크 계속하기 <ArrowRight size={15} />
                     </button>
                   </div>
                 )}
                 <p className="evidence-note">
-                  {demo ? "Illustrative results. " : ""}Quality is defined in
-                  each configuration’s evidence breakdown. Resource estimates
-                  are not billing costs. Pareto membership and recommendations
-                  are supplied by {demo ? "the demo fixture" : "the API"}.
+                  {demo ? "예시 결과입니다. " : ""}품질 산정 근거는 각 구성의 상세 정보에서 확인할 수 있습니다. 자원 추정치는 청구 비용이 아닙니다. 파레토 여부와 추천 구성의 출처: {demo ? "예시 데이터" : "API"}.
                 </p>
               </section>
             </>
@@ -916,15 +871,13 @@ export default function App() {
                 <p>
                   {providerError ||
                     (providerReports
-                      ? "Provider status returned by the runtime API."
-                      : "Connections have not been verified in this session.")}
+                      ? "런타임 API에서 확인한 서비스 상태입니다."
+                      : "현재 세션에서 연결 상태를 확인하지 않았습니다.")}
                 </p>
                 <button
                   className="button secondary"
                   onClick={() => void refreshProviders()}
-                >
-                  Check runtime connections
-                  <Radio size={14} />
+                > 연결 상태 확인 <Radio size={14} />
                 </button>
               </div>
               <section className="provider-grid">
@@ -938,21 +891,21 @@ export default function App() {
                       <span className="provider-logo">
                         {i === 0 ? "▰" : i === 1 ? "N" : "D"}
                       </span>
-                      <span className="eyebrow">{p.role.toUpperCase()}</span>
+                      <span className="eyebrow">{p.role}</span>
                       <h2>{p.name}</h2>
                       <span
                         className={`badge ${connected ? "api" : "offline"}`}
                       >
                         <span className="status-dot" />
                         {connected
-                          ? "LIVE"
+                          ? "연결됨"
                           : report?.status === "ERROR"
-                            ? "ERROR"
-                            : "NOT CONNECTED"}
+                            ? "오류"
+                            : "연결 안 됨"}
                       </span>
                       <p>
                         {report?.reason ??
-                          "No active integration is verified. Check runtime connections for a current status."}
+                          "확인된 연결이 없습니다. 연결 상태 확인 버튼으로 조회하세요."}
                       </p>
                     </article>
                   );
@@ -962,12 +915,8 @@ export default function App() {
           )}
           <footer className="page-footer">
             <span>
-              <span className="mini-cross">+</span> BUILT FOR EVIDENCE, NOT
-              GUESSWORK.
-            </span>
-            <button onClick={() => setScreen("providers")}>
-              Infrastructure status
-              <ArrowUpRight size={12} />
+              <span className="mini-cross">+</span> 추측 대신, 검증된 근거로. </span>
+            <button onClick={() => setScreen("providers")}> 인프라 연결 상태 <ArrowUpRight size={12} />
             </button>
             <span>ATLAS v0.1</span>
           </footer>
@@ -988,42 +937,25 @@ export default function App() {
             <button
               autoFocus
               className="modal-close"
-              aria-label="Close protocol"
+              aria-label="평가 기준 닫기"
               onClick={() => setShowProtocol(false)}
             >
               <X size={20} />
             </button>
             <FlaskConical size={25} />
-            <h2 id="protocol-title">Benchmark protocol</h2>
+            <h2 id="protocol-title"> 평가 기준 </h2>
             <p>{snapshot.protocol}</p>
             <ul>
-              <li>
-                Each point represents a complete model, agent architecture, and
-                compute configuration.
-              </li>
-              <li>
-                Translucent points are predictions. Solid points carry measured
-                evidence; demo results remain labeled.
-              </li>
-              <li>
-                Quality includes a weighted breakdown. Latency is reported in
-                seconds.
-              </li>
-              <li>
-                Resource estimates use a shared unit and are not provider
-                pricing.
-              </li>
-              <li>
-                Pareto membership and recommendations come from the backend or
-                the isolated fixture.
-              </li>
+              <li> 각 항목은 모델·에이전트 아키텍처·컴퓨팅을 포함한 하나의 구성입니다. </li>
+              <li> 반투명 요소는 예측값입니다. 실측과 예시 데이터는 별도 표시합니다. </li>
+              <li> 품질은 가중치를 포함한 평가 근거를 제공하며, 지연 시간은 초 단위입니다. </li>
+              <li> 자원 추정치는 동일한 단위로 비교하며, 서비스 청구 금액이 아닙니다. </li>
+              <li> 파레토 여부와 추천 구성은 백엔드 또는 별도의 예시 데이터에서 가져옵니다. </li>
             </ul>
             <button
               className="button primary"
               onClick={() => setShowProtocol(false)}
-            >
-              Got it
-              <Check size={15} />
+            > 확인 <Check size={15} />
             </button>
           </section>
         </div>

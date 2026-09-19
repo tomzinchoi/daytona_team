@@ -1,3 +1,4 @@
+import { labelKo } from '../labels';
 import {
   ArrowDown,
   ArrowUpRight,
@@ -17,8 +18,8 @@ export function EvidenceBadge({
 }) {
   return (
     <span className={`badge evidence ${config.evidence}`}>
-      {demo ? "DEMO · " : ""}
-      {config.evidence.toUpperCase()}
+      {demo ? "예시 · " : ""}
+      {labelKo(config.evidence)}
     </span>
   );
 }
@@ -37,7 +38,7 @@ export function Topology({ config }: { config: Configuration }) {
               {n.model.slice(0, 1)}
             </span>
             <strong>{n.model}</strong>
-            <span>{n.role}</span>
+            <span>{labelKo(n.role)}</span>
           </div>
         </div>
       ))}
@@ -53,12 +54,13 @@ export default function ConfigurationDetail({
   demo: boolean;
   onUse: (c: Configuration) => void;
 }) {
+  const showMetrics = demo || (config.evidence === "measured" && (config.status === "completed" || config.status === "failed"));
   return (
     <aside className="detail panel">
       <header className="panel-header">
         <div>
           <FlaskConical size={16} />
-          <h2>Configuration detail</h2>
+          <h2> 구성 상세 </h2>
         </div>
         <ArrowUpRight size={15} />
       </header>
@@ -74,56 +76,50 @@ export default function ConfigurationDetail({
         </div>
         <div className="detail-metrics">
           <div>
-            <span>Task quality</span>
+            <span> 작업 품질 </span>
             <strong>
-              {config.quality}
-              <small>%</small>
+              {showMetrics ? <>{config.quality}<small>%</small></> : "미측정"}
             </strong>
           </div>
           <div>
-            <span>Latency</span>
+            <span> 지연 시간 </span>
             <strong>
-              {config.latency}
-              <small> sec</small>
+              {showMetrics ? <>{config.latency}<small> 초</small></> : "미측정"}
             </strong>
           </div>
         </div>
         <dl className="data-rows">
           <div>
-            <dt>Tests passed</dt>
+            <dt> 통과한 테스트 </dt>
             <dd>
-              {config.tests
+              {showMetrics && config.tests
                 ? `${config.tests.passed} / ${config.tests.total}`
-                : "Not measured"}
+                : "미측정"}
             </dd>
           </div>
           <div>
-            <dt>Resource {config.resource.estimated ? "estimate" : "usage"}</dt>
-            <dd>{resourceLabel(config)}</dd>
+            <dt> 자원 {config.resource.estimated ? "추정치" : "사용량"}</dt>
+            <dd>{showMetrics ? resourceLabel(config) : "미측정"}</dd>
           </div>
           <div>
-            <dt>Runtime provider</dt>
-            <dd>{demo ? "Daytona (demo)" : "Daytona"}</dd>
+            <dt> 실행 서비스 </dt>
+            <dd>{demo ? "Daytona (예시)" : "Daytona"}</dd>
           </div>
         </dl>
         <details className="quality-explainer">
-          <summary>
-            How is quality calculated?
-            <ChevronRight size={12} />
+          <summary>{showMetrics ? "품질은 어떻게 계산하나요?" : "후보 선정 근거 · 실측 아님"} <ChevronRight size={12} />
           </summary>
           <p>{config.qualityExplanation}</p>
-          {config.breakdown.map((b) => (
+          {showMetrics && config.breakdown.map((b) => (
             <div key={b.label}>
               <span>
-                {b.label} · {Math.round(b.weight * 100)}% weight
+                {b.label} · {Math.round(b.weight * 100)}% 가중치
               </span>
               <strong>{b.value}%</strong>
             </div>
           ))}
         </details>
-        <button className="button secondary full" onClick={() => onUse(config)}>
-          Use this configuration
-          <ArrowUpRight size={15} />
+        <button className="button secondary full" disabled={!showMetrics} onClick={() => onUse(config)}> 이 구성 선택 <ArrowUpRight size={15} />
         </button>
       </div>
     </aside>
@@ -161,8 +157,8 @@ export function Selection({
       <span className="selection-check">
         <Check size={26} />
       </span>
-      <span className="eyebrow">YOUR CHOICE, BACKED BY EVIDENCE</span>
-      <h2>Selected Production Configuration</h2>
+      <span className="eyebrow"> 평가 근거와 함께 선택하세요 </span>
+      <h2> 선택한 실행 구성 </h2>
       <p>
         {config.name} · {config.compute}
       </p>
@@ -170,32 +166,22 @@ export function Selection({
       <Topology config={config} />
       <div className="selection-evidence">
         <span>
-          <strong>{config.quality}%</strong>Task quality
-        </span>
+          <strong>{config.quality}%</strong> 작업 품질 </span>
         <span>
-          <strong>{config.latency}s</strong>Latency
-        </span>
+          <strong>{config.latency}s</strong> 지연 시간 </span>
         <span>
           <strong>
             {config.tests
               ? `${config.tests.passed}/${config.tests.total}`
               : "—"}
-          </strong>
-          Tests passed
-        </span>
+          </strong> 통과한 테스트 </span>
       </div>
-      <p className="selection-note">
-        Selection saved for this session. No production deployment has been
-        made.{demo ? " All benchmark evidence is illustrative demo data." : ""}
+      <p className="selection-note"> 이 세션에 선택한 구성을 보관합니다. 실제 서비스 배포는 진행하지 않았습니다. {demo ? " 모든 평가 근거는 예시 데이터입니다." : ""}
       </p>
       <p className="selection-note">{config.qualityExplanation}</p>
       <div className="selection-actions">
-        <button className="button secondary" onClick={onBack}>
-          Back to results
-        </button>
-        <button className="button primary" onClick={download}>
-          Export configuration
-          <ArrowUpRight size={15} />
+        <button className="button secondary" onClick={onBack}> 결과로 돌아가기 </button>
+        <button className="button primary" onClick={download}> 구성 내보내기 <ArrowUpRight size={15} />
         </button>
       </div>
     </section>

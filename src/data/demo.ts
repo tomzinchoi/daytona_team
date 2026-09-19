@@ -2,7 +2,7 @@ import type { Configuration, Phase, Snapshot } from "../domain";
 
 // The only source of synthetic business data. Never presented as live execution.
 export const DEMO_WORKLOAD =
-  "Fix recurring bugs in this repository and make the tests pass.";
+  "저장소에서 반복되는 버그를 수정하고 테스트를 통과시키세요.";
 const rows: [string[], number, number, number][] = [
   [["Qwen"], 12.8, 60, 0.14],
   [["DeepSeek"], 23.4, 70, 0.3],
@@ -32,11 +32,11 @@ export function demoSnapshot(workload: string, phase: Phase): Snapshot {
     source: "demo",
     phase,
     protocol:
-      "Illustrative protocol: identical repository snapshot · 20 test assertions · fixed task set. Quality = passed assertions ÷ 20 × 100. No sandbox has been executed.",
+      "예시 평가: 동일한 저장소 스냅샷 · 20개 테스트 · 고정 작업. 품질 = 통과 테스트 ÷ 20 × 100. 실제 샌드박스를 실행하지 않았습니다.",
     providers: [
-      { name: "Daytona", role: "Benchmark runtime", connected: false },
-      { name: "Nosana", role: "GPU compute provider", connected: false },
-      { name: "DNSimple", role: "Production endpoint", connected: false },
+      { name: "Daytona", role: "벤치마크 런타임", connected: false },
+      { name: "Nosana", role: "GPU 컴퓨팅 서비스", connected: false },
+      { name: "DNSimple", role: "서비스 엔드포인트", connected: false },
     ],
     configurations: rows.map(([models, latency, quality, resource], i) => {
       const n = i + 1,
@@ -44,30 +44,30 @@ export function demoSnapshot(workload: string, phase: Phase): Snapshot {
         measured = phase === "results" && selected;
       return {
         id: String(n).padStart(2, "0"),
-        name: `Architecture #${String(n).padStart(2, "0")}`,
+        name: `구성 #${String(n).padStart(2, "0")}`,
         topology: models.map((model, j) => ({
           model,
           role:
             models.length === 1
-              ? "Worker"
+              ? "작업자"
               : j === 0
-                ? "Reasoner"
+                ? "추론 담당"
                 : j === models.length - 1
-                  ? "Reviewer"
-                  : "Worker",
+                  ? "검토자"
+                  : "작업자",
         })),
         compute:
           selected && n === 12 ? "8 vCPU · 16 GB RAM" : "4 vCPU · 8 GB RAM",
-        evidence: measured ? "measured" : "predicted",
+        evidence: measured ? "illustrative" : "predicted",
         latency,
         quality,
         resource: { value: resource, unit: "vCPU-min", estimated: true },
         tests: measured ? { passed: quality / 5, total: 20 } : null,
         qualityExplanation: measured
-          ? "Illustrative test pass rate. Each of 20 assertions has equal weight. This is demo evidence, not a real execution."
-          : "Predicted test pass rate from the demo fixture; no tests have run.",
+          ? "20개 테스트를 같은 가중치로 계산한 예시 통과율입니다. 실제 실행 결과가 아닙니다."
+          : "예시 데이터의 예상 테스트 통과율입니다. 실제 테스트는 실행하지 않았습니다.",
         breakdown: [
-          { label: "Test assertion pass rate", value: quality, weight: 1 },
+          { label: "테스트 통과율", value: quality, weight: 1 },
         ],
         pareto: measured,
         recommendation: measured ? picks.get(n)! : null,

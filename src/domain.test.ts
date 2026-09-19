@@ -14,12 +14,12 @@ describe("evidence integrity", () => {
     s.configurations[0].resource.value = Infinity;
     expect(snapshotSchema.safeParse(s).success).toBe(false);
   });
-  it("all demo stages are typed, with measured evidence only at the result stage", () => {
+  it("demo stages never present illustrative evidence as actual measurement", () => {
     for (const phase of ["search", "benchmark", "results"] as const) {
       const s = snapshotSchema.parse(demoSnapshot(DEMO_WORKLOAD, phase));
       expect(s.configurations).toHaveLength(15);
       expect(
-        s.configurations.filter((c) => c.evidence === "measured"),
+        s.configurations.filter((c) => c.evidence === "illustrative"),
       ).toHaveLength(phase === "results" ? 3 : 0);
       for (const c of s.configurations)
         if (c.tests)
@@ -58,7 +58,7 @@ describe("evidence integrity", () => {
           c.recommendation === null,
       ),
     ).toBe(true);
-    expect(result.configurations[0].compute).toContain("tokens/agent");
+    expect(result.configurations[0].compute).toContain("토큰/에이전트");
     expect(result.configurations[0].resource.unit).toBe("relative compute");
   });
 });

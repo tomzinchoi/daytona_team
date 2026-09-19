@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Configuration } from "../domain";
+import { labelKo } from '../labels';
 
 type Props = {
   configurations: Configuration[];
@@ -36,6 +37,10 @@ export default function Scene({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     el.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#fbfaff');
+    scene.add(new THREE.AmbientLight('#ffffff', 2));
+    const light = new THREE.DirectionalLight('#ffffff', 3);
+    light.position.set(4, 10, 6); scene.add(light);
     const camera = new THREE.PerspectiveCamera(39, 1, 0.1, 100);
     if (previousReset.current !== resetKey) {
       cameraPosition.current = null;
@@ -51,7 +56,7 @@ export default function Scene({
     controls.maxDistance = 30;
     controls.maxPolarAngle = Math.PI / 2.05;
     const textures: THREE.Texture[] = [];
-    function line(a: number[], b: number[], color = "#30392e", opacity = 0.8) {
+    function line(a: number[], b: number[], color = "#dcd9ee", opacity = 0.8) {
       const geo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(...a),
         new THREE.Vector3(...b),
@@ -65,15 +70,15 @@ export default function Scene({
     function label(
       text: string,
       position: number[],
-      color = "#85907e",
+      color = "#65617d",
       scale = 1,
     ) {
       const cv = document.createElement("canvas");
       const ctx = cv.getContext("2d")!;
-      ctx.font = "40px monospace";
+      ctx.font = "40px sans-serif";
       cv.width = Math.ceil(ctx.measureText(text).width + 30);
       cv.height = 64;
-      ctx.font = "40px monospace";
+      ctx.font = "40px sans-serif";
       ctx.textAlign = "center";
       ctx.fillStyle = color;
       ctx.fillText(text, cv.width / 2, 45);
@@ -124,10 +129,10 @@ export default function Scene({
         "#7e8878",
         0.65,
       );
-    label("LATENCY (seconds) →", [0, -0.9, 4]);
-    label("TASK QUALITY ↑", [-4.2, 5.65, 3]);
+    label("지연 시간 (초) →", [0, -0.9, 4]);
+    label("작업 품질 ↑", [-4.2, 5.65, 3]);
     label(
-      `RESOURCE${configurations.some(c => c.resource.estimated) ? " EST." : ""} (${configurations[0]?.resource.unit ?? "units"})`,
+      `자원${configurations.some(c => c.resource.estimated) ? " 추정" : " 사용량"} (${configurations[0]?.resource.unit ?? "단위"})`,
       [4.5, -0.8, -1],
       "#85907e",
       0.7,
@@ -141,29 +146,19 @@ export default function Scene({
       );
     configurations.forEach((c) => {
       const active = c.id === selected;
-      const color =
-        c.recommendation === "balanced"
-          ? "#c3f478"
-          : c.recommendation === "performance"
-            ? "#ac9cff"
-            : c.recommendation === "efficient"
-              ? "#64dcca"
-              : c.selectedForBenchmark
-                ? "#c3f478"
-                : "#849775";
+      const color = c.quality >= 80 ? '#20b965' : c.quality >= 65 ? '#e7af20' : '#eb6248';
+      const height = Math.max(0.04, c.quality / 20);
       const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(
-          active ? 0.18 : c.evidence === "measured" ? 0.14 : 0.115,
-          24,
-          16,
-        ),
-        new THREE.MeshBasicMaterial({
+        new THREE.BoxGeometry(active ? 0.34 : 0.24, height, active ? 0.34 : 0.24),
+        new THREE.MeshStandardMaterial({
           color,
           transparent: c.evidence === "predicted",
-          opacity: c.evidence === "predicted" ? 0.36 : 1,
+          opacity: c.evidence === "predicted" ? 0.65 : 1,
+          roughness: 0.35,
         }),
       );
       mesh.position.copy(position(c));
+      mesh.position.y = height / 2;
       mesh.userData.config = c;
       scene.add(mesh);
       meshes.push(mesh);
@@ -175,8 +170,8 @@ export default function Scene({
           0.2,
         );
         label(
-          `#${c.id}${c.recommendation ? " · " + c.recommendation.toUpperCase() : ""}`,
-          [mesh.position.x, mesh.position.y + 0.45, mesh.position.z],
+          `#${c.id}${c.recommendation ? " · " + labelKo(c.recommendation) : ""}`,
+          [mesh.position.x, height + 0.45, mesh.position.z],
           color,
           c.recommendation ? 0.78 : 0.7,
         );
@@ -191,7 +186,7 @@ export default function Scene({
             side: THREE.DoubleSide,
           }),
         );
-        ring.position.copy(mesh.position);
+        ring.position.copy(position(c));
         ring.quaternion.copy(camera.quaternion);
         ring.userData.billboard = true;
         scene.add(ring);
@@ -298,7 +293,7 @@ export default function Scene({
       className="scene"
       ref={host}
       role="img"
-      aria-label="Interactive 3D scatter plot. X: latency. Y: task quality. Z: resource. Use the configuration selector below for keyboard access."
+      aria-label="3D 성능 비교 그래프. 가로축: 지연 시간, 높이: 품질, 깊이: 자원. 키보드는 아래 구성 선택 메뉴를 이용하세요."
     />
   );
 }
