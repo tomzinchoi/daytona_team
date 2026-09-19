@@ -3,6 +3,8 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import signal
 import subprocess
 import time
@@ -39,6 +41,8 @@ def preflight(payload):
     if not manifest_path.is_file():
         raise RuntimeLimitation('MODEL_MANIFEST_MISSING', 'The snapshot model manifest is missing.')
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    if payload['benchmarkCase']['evaluator']['type'] == 'node_tests' and not shutil.which('node'):
+        raise RuntimeLimitation('NODE_NOT_INSTALLED', 'The coding evaluator requires Node.js in the snapshot.')
     for agent in payload['architecture']['agents']:
         model = agent['model']
         if model not in MODELS:
@@ -59,7 +63,10 @@ def remaining(deadline):
 
 def stop_process(process):
     if process.poll() is None:
-        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
         try:
             process.wait(timeout=2)
         except subprocess.TimeoutExpired:
@@ -90,7 +97,7 @@ def infer(agent, task, previous_output, settings, deadline):
             # One user message works with Gemma's template as well as Qwen/DeepSeek.
             prompt = 'Original task:\n' + task + '\n\nYour role:\n' + agent['role']
             prompt += '\n\nPrevious agent output:\n' + (previous_output if previous_output is not None else '(none)')
-            prompt += '\n\nProduce the answer requested by the original task. Do not add commentary outside its requested format.'
+            prompt += '\n\nFollow your assigned role. If you produce the final answer or code, return only the requested format.'
             body = json.dumps({
                 'model': agent['model'], 'messages': [{'role': 'user', 'content': prompt}],
                 'temperature': settings['temperature'], 'seed': settings['seed'],
@@ -129,7 +136,12 @@ def run(payload):
     try:
         for agent in payload['architecture']['agents']:
             agent_started = time.monotonic()
-            output = infer(agent, payload['benchmarkCase']['task'], output, payload['settings'], deadline)
+            task = payload['benchmarkCase']['task']
+            evaluator = payload['benchmarkCase']['evaluator']
+            if evaluator['type'] == 'node_tests':
+                task += '\n\nInput repository files:\n' + json.dumps(evaluator['files'], ensure_ascii=False)
+                task += '\n\nOnly edit ' + evaluator['editableFile'] + '. Return that complete file as plain JavaScript, with no markdown fences. Do not write test files.'
+            output = infer(agent, task, output, payload['settings'], deadline)
             agents.append({'model': agent['model'], 'role': agent['role'], 'output': output,
                            'elapsedMs': round((time.monotonic() - agent_started) * 1000, 3)})
     except RuntimeLimitation as failure:
@@ -161,6 +173,83 @@ def evaluate_output(output, evaluator):
     return {'passed': all(check['passed'] for check in checks), 'checks': checks}
 
 
+def fixture_path(root, name):
+    if not re.fullmatch(r'[a-zA-Z0-9_][a-zA-Z0-9_./-]*', name) or any(part in ['', '.', '..'] for part in name.split('/')):
+        raise RuntimeLimitation('INVALID_FIXTURE_PATH', 'Fixture paths must stay within the workspace.')
+    path = root / name
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise RuntimeLimitation('INVALID_FIXTURE_PATH', 'Fixture path escapes the workspace.')
+    return path
+
+
+def evaluator_command(command, cwd, timeout, capture=False):
+    process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, start_new_session=os.name == 'posix')
+    try:
+        stdout, _ = process.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(command, process.returncode, stdout)
+    except subprocess.TimeoutExpired:
+        if os.name == 'posix':
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            process.kill()
+        process.communicate(timeout=2)
+        raise
+
+
+def evaluate_code(output, benchmark_case):
+    evaluator = benchmark_case['evaluator']
+    root = Path('case-workspace').resolve()
+    root.mkdir(exist_ok=False)
+    if evaluator['editableFile'] not in evaluator['files'] or evaluator['testFile'] not in evaluator['testFiles']:
+        raise RuntimeLimitation('INVALID_CODING_FIXTURE', 'Editable file and test entrypoint must exist in the fixture.')
+    if set(evaluator['files']).intersection(evaluator['testFiles']):
+        raise RuntimeLimitation('INVALID_CODING_FIXTURE', 'Input and trusted test files must not overlap.')
+    for name, content in {**evaluator['files'], **evaluator['testFiles']}.items():
+        path = fixture_path(root, name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding='utf-8')
+    # Only one explicitly editable file is replaced. No patch or shell evaluation.
+    solution = output.strip()
+    fenced = re.fullmatch(r'```(?:javascript|js|cjs)?\s*\n(.*)\n```', solution, re.DOTALL)
+    if fenced:
+        solution = fenced.group(1)
+    fixture_path(root, evaluator['editableFile']).write_text(solution, encoding='utf-8')
+    expected = evaluator['expectedTests']
+    evidence = {'caseId': benchmark_case['id'], 'status': 'COMPLETED', 'buildSucceeded': False,
+                'tests': {'passed': 0, 'failed': 0, 'skipped': expected}, 'buildExitStatus': None, 'testExitStatus': None}
+    checks = []
+    try:
+        build = evaluator_command(['node', '--check', evaluator['editableFile']], root, timeout=5)
+        evidence['buildExitStatus'] = build.returncode
+        evidence['buildSucceeded'] = build.returncode == 0
+        checks.append({'name': 'node --check', 'passed': build.returncode == 0})
+        if build.returncode == 0:
+            reporter = Path(__file__).resolve().with_name('test-reporter.mjs')
+            # The reporter emits only real Node test events. Printed fake TAP is ignored.
+            tests = evaluator_command(['node', '--test', '--test-reporter=' + reporter.as_uri(), evaluator['testFile']], root, timeout=15, capture=True)
+            evidence['testExitStatus'] = tests.returncode
+            report = json.loads(tests.stdout)
+            counts = report['counts']
+            passed, failed = counts['passed'], counts['failed']
+            observed = counts['tests']
+            valid_counts = all(type(value) is int and value >= 0 for value in [passed, failed, observed]) and passed + failed <= observed <= expected
+            if not valid_counts:
+                raise RuntimeLimitation('INVALID_TEST_COUNTS', 'Node test counts do not match the fixed fixture.')
+            evidence['tests'] = {'passed': passed, 'failed': failed, 'skipped': expected - passed - failed}
+            checks.append({'name': 'trusted node:test cases', 'passed': tests.returncode == 0 and report['success'] is True and passed == expected})
+    except subprocess.TimeoutExpired:
+        evidence['status'] = 'TIMEOUT'
+        checks.append({'name': 'evaluation timeout', 'passed': False})
+    except (ValueError, KeyError, TypeError, RuntimeLimitation):
+        evidence['status'] = 'ERROR'
+        checks.append({'name': 'valid test-runner evidence', 'passed': False})
+    return {'passed': all(check['passed'] for check in checks), 'checks': checks, 'caseEvidence': evidence}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', choices=['preflight', 'run', 'evaluate'])
@@ -176,7 +265,7 @@ def main():
         execution = json.loads(Path('execution.json').read_text(encoding='utf-8'))
         if execution['error'] is not None or not isinstance(execution['output'], str):
             raise RuntimeLimitation('NO_MODEL_OUTPUT', 'Cannot evaluate an incomplete execution.')
-        result = evaluate_output(execution['output'], payload['benchmarkCase']['evaluator'])
+        result = evaluate_code(execution['output'], payload['benchmarkCase']) if payload['benchmarkCase']['evaluator']['type'] == 'node_tests' else evaluate_output(execution['output'], payload['benchmarkCase']['evaluator'])
         write_json('evaluation.json', result)
         return 0 if result['passed'] else 1
     except RuntimeLimitation as error:

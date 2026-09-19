@@ -11,7 +11,7 @@ export class NosanaProvider implements ComputeProvider {
     return { id: this.id, kind: 'compute', status: 'NOT_CONFIGURED', capabilities: this.getCapabilities(), reason: this.config.NOSANA_API_KEY ? 'Credentials supplied; Nosana job submission, artifact collection, and cleanup are not implemented.' : 'Nosana credentials and job configuration are not configured.' };
   }
   async runBenchmark(request: RunRequest, context: BenchmarkContext) {
-    const result = emptyResult(request, context.runId, this.config.BENCHMARK_TIMEOUT_SECONDS);
+    const result = emptyResult(request, context.runId, this.config.BENCHMARK_TIMEOUT_SECONDS, this.config.BENCHMARK_MAX_TOKENS);
     result.error = { code: 'PROVIDER_NOT_CONFIGURED', message: (await this.getStatus()).reason };
     return result;
   }

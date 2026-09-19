@@ -10,6 +10,7 @@ const envSchema = z.object({
   DAYTONA_TARGET: z.string().default('us'),
   DAYTONA_SNAPSHOT: optional,
   BENCHMARK_TIMEOUT_SECONDS: z.coerce.number().int().min(10).max(1800).default(300),
+  BENCHMARK_MAX_TOKENS: z.coerce.number().int().min(64).max(2048).default(512),
   DAYTONA_PROVISION_TIMEOUT_SECONDS: z.coerce.number().int().min(10).max(600).default(120),
   NOSANA_API_KEY: optional,
   NOSANA_MARKET_ID: optional,

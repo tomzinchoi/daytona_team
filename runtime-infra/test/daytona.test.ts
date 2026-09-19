@@ -42,6 +42,7 @@ test('different architectures keep environment and fixture fingerprints constant
   const provider = new DaytonaProvider(configured(), () => fixture.client);
   const a = await provider.runBenchmark(request, { runId: 'a', transition() {} });
   const next = structuredClone(request); next.architecture.id = 'second'; next.architecture.agents[0]!.role = 'Review.';
+  fixture.execution.agents[0]!.role = 'Review.';
   const b = await provider.runBenchmark(next, { runId: 'b', transition() {} });
   assert.equal(a.provenance.environmentHash, b.provenance.environmentHash);
   assert.equal(a.provenance.fixtureHash, b.provenance.fixtureHash);

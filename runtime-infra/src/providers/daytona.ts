@@ -1,7 +1,7 @@
 import { Daytona, type CreateSandboxFromSnapshotParams } from '@daytona/sdk';
 import type { Config } from '../config.js';
 import { evaluationSchema, executionSchema, type BenchmarkResult, type RunRequest, type ProviderReport } from '../contracts.js';
-import { emptyResult, hash, runnerHash, runnerSource } from '../provenance.js';
+import { emptyResult, hash, reporterSource, runnerHash, runnerSource } from '../provenance.js';
 import { RuntimeFailure, type BenchmarkContext, type ComputeProvider } from './provider.js';
 
 // Narrow ports enable unit tests. Production always uses the official SDK below.
@@ -20,6 +20,7 @@ export interface LabClient {
   snapshot: { get(id: string): Promise<LabSnapshot>; list(query: { limit: number }): Promise<unknown> };
   create(params: CreateSandboxFromSnapshotParams, options: { timeout: number }): Promise<LabSandbox>;
   get(id: string): Promise<LabSandbox>;
+  [Symbol.asyncDispose]?(): Promise<void>;
 }
 export function createDaytonaClient(config: Config): Daytona {
   return new Daytona({ apiKey: config.DAYTONA_API_KEY, apiUrl: config.DAYTONA_API_URL, target: config.DAYTONA_TARGET, requestTimeoutMs: 15000, otelEnabled: false });
@@ -59,13 +60,18 @@ export class DaytonaProvider implements ComputeProvider {
   }
   async runBenchmark(request: RunRequest, context: BenchmarkContext): Promise<BenchmarkResult> {
     const started = performance.now();
-    const result = emptyResult(request, context.runId, this.config.BENCHMARK_TIMEOUT_SECONDS);
+    const result = emptyResult(request, context.runId, this.config.BENCHMARK_TIMEOUT_SECONDS, this.config.BENCHMARK_MAX_TOKENS);
+    const runSampling = { ...sampling, maxTokens: this.config.BENCHMARK_MAX_TOKENS };
     let sandbox: LabSandbox | undefined;
     let creationAttempted = false;
     const sandboxName = `benchmark-${context.runId}`;
     try {
       if (!this.config.DAYTONA_API_KEY) throw new RuntimeFailure('PROVIDER_NOT_CONFIGURED', 'DAYTONA_API_KEY is not configured.');
       const snapshot = await this.pinnedSnapshot();
+      const constraints = request.architecture.constraints;
+      if (constraints && (constraints.cpu !== snapshot.cpu || constraints.memoryMb !== snapshot.mem * 1024 || constraints.timeoutMs !== this.config.BENCHMARK_TIMEOUT_SECONDS * 1000 || constraints.maxTokens !== this.config.BENCHMARK_MAX_TOKENS)) {
+        throw new RuntimeFailure('COMPUTE_POLICY_MISMATCH', 'Requested compute settings differ from the fixed lab snapshot, timeout, or token budget. Run only equivalent configurations; requests are never silently changed.');
+      }
       result.provenance.snapshotId = snapshot.id;
       context.transition('PROVISIONING');
       creationAttempted = true;
@@ -82,13 +88,14 @@ export class DaytonaProvider implements ComputeProvider {
       if (sandbox.cpu !== snapshot.cpu || sandbox.memory !== snapshot.mem || sandbox.disk !== snapshot.disk || sandbox.gpu !== 0) {
         throw new RuntimeFailure('ENVIRONMENT_MISMATCH', 'Sandbox resources differ from the pinned snapshot.');
       }
-      result.provenance.environmentHash = hash({ snapshot: snapshot.id, resources, runnerHash, sampling, timeoutSeconds: this.config.BENCHMARK_TIMEOUT_SECONDS, target: this.config.DAYTONA_TARGET });
+      result.provenance.environmentHash = hash({ snapshot: snapshot.id, resources, runnerHash, sampling: runSampling, timeoutSeconds: this.config.BENCHMARK_TIMEOUT_SECONDS, target: this.config.DAYTONA_TARGET });
       context.transition('PREPARING');
       await sandbox.fs.createFolder(workdir, '700');
       await sandbox.fs.uploadFile(runnerSource, `${workdir}/runner.py`, 30);
+      await sandbox.fs.uploadFile(reporterSource, `${workdir}/test-reporter.mjs`, 30);
       await sandbox.fs.uploadFile(Buffer.from(JSON.stringify({
         architecture: request.architecture, benchmarkCase: request.benchmarkCase,
-        settings: { ...sampling, threads: snapshot.cpu, timeoutSeconds: this.config.BENCHMARK_TIMEOUT_SECONDS },
+        settings: { ...runSampling, threads: snapshot.cpu, timeoutSeconds: this.config.BENCHMARK_TIMEOUT_SECONDS },
       })), `${workdir}/input.json`, 30);
       const prepared = await sandbox.process.executeCommand('python3 runner.py preflight input.json', workdir, undefined, 30);
       if (prepared.exitCode !== 0) throw new RuntimeFailure('RUNTIME_NOT_READY', 'Snapshot must include Python 3, llama-server, manifest, and the requested GGUF models. No model was run.');
@@ -97,6 +104,9 @@ export class DaytonaProvider implements ComputeProvider {
       result.metrics.exitStatus = executed.exitCode;
       const execution = executionSchema.parse(JSON.parse((await sandbox.fs.downloadFile(`${workdir}/execution.json`, 30)).toString('utf8')));
       if ((execution.error === null) !== (executed.exitCode === 0)) throw new RuntimeFailure('INVALID_RUNTIME_RESULT', 'Runner exit status and execution artifact disagree.');
+      if (execution.agents.some((agent, index) => agent.model !== request.architecture.agents[index]?.model || agent.role !== request.architecture.agents[index]?.role)) {
+        throw new RuntimeFailure('INVALID_RUNTIME_RESULT', 'Runner agent order, models, or roles do not match the requested architecture.');
+      }
       if (!execution.error && (execution.agents.length !== request.architecture.agents.length || execution.output !== execution.agents.at(-1)?.output)) {
         throw new RuntimeFailure('INVALID_RUNTIME_RESULT', 'Runner did not execute every requested agent.');
       }
@@ -107,6 +117,9 @@ export class DaytonaProvider implements ComputeProvider {
       result.provenance.modelManifest = execution.modelManifest;
       if (execution.error) {
         result.error = execution.error;
+        if (request.benchmarkCase.evaluator.type === 'node_tests') {
+          result.caseEvidence = { caseId: request.benchmarkCase.id, status: execution.error.code === 'BENCHMARK_TIMEOUT' ? 'TIMEOUT' : 'ERROR', buildSucceeded: false, tests: { passed: 0, failed: 0, skipped: request.benchmarkCase.evaluator.expectedTests }, buildExitStatus: null, testExitStatus: null };
+        }
       } else {
         context.transition('EVALUATING');
         const evaluated = await sandbox.process.executeCommand('python3 runner.py evaluate input.json', workdir, undefined, 30);
@@ -116,6 +129,13 @@ export class DaytonaProvider implements ComputeProvider {
           throw new RuntimeFailure('INVALID_EVALUATOR_RESULT', 'Evaluator exit status and checks disagree.');
         }
         result.evaluator = evaluation;
+        if (request.benchmarkCase.evaluator.type === 'node_tests') {
+          const evidence = evaluation.caseEvidence;
+          if (!evidence || evidence.caseId !== request.benchmarkCase.id || evidence.tests.passed + evidence.tests.failed + evidence.tests.skipped !== request.benchmarkCase.evaluator.expectedTests || (evaluation.passed && (!evidence.buildSucceeded || evidence.tests.passed !== request.benchmarkCase.evaluator.expectedTests))) {
+            throw new RuntimeFailure('INVALID_EVALUATOR_RESULT', 'Coding test evidence is missing or does not match the fixture.');
+          }
+          result.caseEvidence = evidence;
+        }
         result.success = evaluation.passed;
         result.status = evaluation.passed ? 'COMPLETED' : 'FAILED';
         if (!evaluation.passed) result.error = { code: 'EVALUATION_FAILED', message: 'The real model output failed the benchmark evaluator.' };
@@ -141,6 +161,7 @@ export class DaytonaProvider implements ComputeProvider {
   }
   async cleanup(): Promise<void> {
     const attempts = await Promise.allSettled([...this.pendingCleanup.values()].map(async sandbox => { await sandbox.delete(60, true); this.pendingCleanup.delete(sandbox.id); }));
+    await this.client?.[Symbol.asyncDispose]?.();
     if (attempts.some(x => x.status === 'rejected')) throw new RuntimeFailure('CLEANUP_FAILED', 'One or more Daytona sandboxes could not be deleted; check the Daytona dashboard.');
   }
 }

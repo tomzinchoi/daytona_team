@@ -8,12 +8,13 @@ import { DaytonaProvider } from './providers/daytona.js';
 import { NosanaProvider } from './providers/nosana.js';
 import { DnsimpleProvider } from './providers/dnsimple.js';
 import { RuntimeFailure, type ComputeProvider, type NetworkProvider } from './providers/provider.js';
+import { adaptEngineRun } from './engine-adapter.js';
 
 export function buildApp(options: { config?: Config; compute?: Record<RunRequest['provider'], ComputeProvider>; network?: NetworkProvider } = {}) {
   const config = options.config ?? loadConfig();
   const compute = options.compute ?? { daytona: new DaytonaProvider(config), nosana: new NosanaProvider(config) };
   const network = options.network ?? new DnsimpleProvider(config);
-  const jobs = new BenchmarkJobs(compute, config.BENCHMARK_TIMEOUT_SECONDS);
+  const jobs = new BenchmarkJobs(compute, config.BENCHMARK_TIMEOUT_SECONDS, 200, config.BENCHMARK_MAX_TOKENS);
   const app = Fastify({ bodyLimit: 256 * 1024, logger: false, requestTimeout: 15000 });
   const digest = (value: string) => createHash('sha256').update(value).digest();
   app.addHook('onRequest', async (request, reply) => {
@@ -33,6 +34,12 @@ export function buildApp(options: { config?: Config; compute?: Record<RunRequest
   });
   app.get('/health', async () => ({ status: 'ok', service: 'benchmark-runtime' }));
   app.get('/api/providers', async () => ({ providers: await Promise.all([compute.daytona.getStatus(), compute.nosana.getStatus(), network.getStatus()]) }));
+  app.get('/api/benchmark/policy', async () => ({
+    timeoutSeconds: config.BENCHMARK_TIMEOUT_SECONDS, maxTokensPerAgent: config.BENCHMARK_MAX_TOKENS,
+    temperature: 0, seed: 42, contextSize: 4096, concurrency: 1,
+    resourcePolicy: 'Every run inherits the same immutable Daytona snapshot; incompatible architecture constraints are rejected.',
+    evaluatorTimeoutSeconds: 20,
+  }));
   app.post('/api/benchmark/run', async (request, reply) => {
     const query = z.object({ wait: z.enum(['true', 'false']).default('false') }).strict().parse(request.query);
     const input = runRequestSchema.parse(request.body);
@@ -42,6 +49,12 @@ export function buildApp(options: { config?: Config; compute?: Record<RunRequest
       const result = await jobs.wait(record.id);
       return reply.code(result.measurement === 'NOT_AVAILABLE' ? 503 : 200).send(result);
     }
+    return reply.code(202).send({ ...record, statusUrl: `/api/benchmark/runs/${record.id}` });
+  });
+  app.post('/api/benchmark/engine/run', async (request, reply) => {
+    const input = adaptEngineRun(request.body);
+    const record = jobs.submit([input])[0]!;
+    reply.header('Location', `/api/benchmark/runs/${record.id}`);
     return reply.code(202).send({ ...record, statusUrl: `/api/benchmark/runs/${record.id}` });
   });
   app.get('/api/benchmark/runs/:id', async (request, reply) => {

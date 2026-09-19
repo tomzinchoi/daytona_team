@@ -9,13 +9,23 @@ export class BenchmarkJobs {
   private readonly queue: Job[] = [];
   private draining?: Promise<void>;
   private closing = false;
-  constructor(private readonly providers: Record<RunRequest['provider'], ComputeProvider>, private readonly timeoutSeconds: number, private readonly capacity = 200) {}
+  constructor(private readonly providers: Record<RunRequest['provider'], ComputeProvider>, private readonly timeoutSeconds: number, private readonly capacity = 200, private readonly maxTokens = 512) {}
   submit(requests: RunRequest[], batchId: string | null = null): RunRecord[] {
     if (this.closing) throw new RuntimeFailure('SHUTTING_DOWN', 'The benchmark service is shutting down.');
     const required = this.jobs.size + requests.length - this.capacity;
-    const completed = [...this.jobs.entries()].filter(([, j]) => j.record.result !== null);
-    if (required > completed.length) throw new RuntimeFailure('QUEUE_FULL', 'The benchmark queue is full. Try again after existing runs finish.');
-    for (const [id] of completed.slice(0, Math.max(0, required))) this.jobs.delete(id);
+    const groups = new Map<string, Job[]>();
+    for (const job of this.jobs.values()) {
+      const key = job.record.batchId ?? job.record.id;
+      groups.set(key, [...(groups.get(key) ?? []), job]);
+    }
+    const evictable = [...groups.values()].filter(group => group.every(job => job.record.result !== null));
+    if (required > evictable.reduce((count, group) => count + group.length, 0)) throw new RuntimeFailure('QUEUE_FULL', 'The benchmark queue is full. Try again after existing runs finish.');
+    // Evict whole completed batches, so polling never returns a misleading partial batch.
+    let evicted = 0;
+    for (const group of evictable) {
+      if (evicted >= required) break;
+      for (const job of group) { this.jobs.delete(job.record.id); evicted++; }
+    }
     const created = requests.map(request => {
       const id = randomUUID(); const at = new Date().toISOString();
       const record: RunRecord = { id, batchId, status: 'QUEUED', createdAt: at, updatedAt: at, history: [{ status: 'QUEUED', at }], result: null };
@@ -25,8 +35,13 @@ export class BenchmarkJobs {
       this.jobs.set(id, job); this.queue.push(job);
       return structuredClone(record);
     });
-    if (!this.draining) this.draining = Promise.resolve().then(() => this.drain()).finally(() => { this.draining = undefined; });
+    this.startDrain();
     return created;
+  }
+  private startDrain(): void {
+    if (!this.draining && this.queue.length) {
+      this.draining = Promise.resolve().then(() => this.drain()).finally(() => { this.draining = undefined; this.startDrain(); });
+    }
   }
   get(id: string): RunRecord | undefined { const record = this.jobs.get(id)?.record; return record ? structuredClone(record) : undefined; }
   batch(id: string): RunRecord[] { return [...this.jobs.values()].filter(j => j.record.batchId === id).map(j => structuredClone(j.record)); }
@@ -42,7 +57,7 @@ export class BenchmarkJobs {
         if (this.closing) throw new RuntimeFailure('SHUTTING_DOWN', 'Queued benchmark cancelled during shutdown.');
         result = await this.providers[job.request.provider].runBenchmark(job.request, { runId: job.record.id, transition: status => this.transition(job.record, status) });
       } catch (error) {
-        result = emptyResult(job.request, job.record.id, this.timeoutSeconds);
+        result = emptyResult(job.request, job.record.id, this.timeoutSeconds, this.maxTokens);
         result.error = error instanceof RuntimeFailure ? { code: error.code, message: error.message } : { code: 'INTERNAL_RUNTIME_ERROR', message: 'The runtime could not complete this benchmark.' };
       }
       job.record.result = result;

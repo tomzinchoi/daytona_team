@@ -3,7 +3,7 @@ FROM node:22-bookworm-slim AS build
 ARG LLAMA_CPP_COMMIT=b23701f77d47dad9de834d59ebfcbe25c9e8b46f
 RUN apt-get update && apt-get install -y --no-install-recommends git cmake build-essential ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN git init /src/llama && cd /src/llama && git remote add origin https://github.com/ggml-org/llama.cpp.git && git fetch --depth 1 origin "$LLAMA_CPP_COMMIT" && git checkout --detach FETCH_HEAD
-RUN cmake -S /src/llama -B /src/llama/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_CUDA=OFF -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF && cmake --build /src/llama/build --target llama-server -j 4
+RUN cmake -S /src/llama -B /src/llama/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_CUDA=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_APP=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DBUILD_SHARED_LIBS=OFF && cmake --build /src/llama/build --target llama-server -j 4
 
 FROM node:22-bookworm-slim
 ARG LLAMA_CPP_COMMIT=b23701f77d47dad9de834d59ebfcbe25c9e8b46f

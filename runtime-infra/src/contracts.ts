@@ -2,12 +2,28 @@ import { z } from 'zod';
 
 export const modelSchema = z.enum(['qwen3-4b', 'deepseek-r1-distill-qwen-7b', 'gemma-3-4b']);
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/);
+const safePath = z.string().max(180).regex(/^[a-zA-Z0-9_][a-zA-Z0-9_.\/-]*$/).refine(path => path.split('/').every(part => part !== '..' && part !== '.' && part !== ''), 'Use safe relative file paths.');
+const fileMap = z.record(safePath, z.string().max(50000)).refine(files => Object.keys(files).length > 0 && Object.keys(files).length <= 20, 'Provide 1–20 files.');
+export const nodeTestsSchema = z.object({
+  type: z.literal('node_tests'),
+  files: fileMap,
+  editableFile: safePath,
+  testFiles: fileMap,
+  testFile: safePath,
+  expectedTests: z.number().int().min(1).max(100),
+}).strict().superRefine((value, ctx) => {
+  if (!Object.hasOwn(value.files, value.editableFile) || !/\.(cjs|mjs|js)$/.test(value.editableFile)) ctx.addIssue({ code: 'custom', message: 'editableFile must be a JavaScript file in files.' });
+  if (!Object.hasOwn(value.testFiles, value.testFile) || !/\.(cjs|mjs|js)$/.test(value.testFile)) ctx.addIssue({ code: 'custom', message: 'testFile must be a JavaScript file in testFiles.' });
+  if (Object.keys(value.testFiles).some(path => Object.hasOwn(value.files, path))) ctx.addIssue({ code: 'custom', message: 'Trusted test files cannot overlap input files.' });
+});
 export const architectureSchema = z.object({
   id,
   agents: z.array(z.object({
     role: z.string().trim().min(1).max(2000),
     model: modelSchema,
   }).strict()).min(1).max(3),
+  constraints: z.object({ cpu: z.number().int().positive(), memoryMb: z.number().int().positive(), maxTokens: z.number().int().positive(), timeoutMs: z.number().int().positive() }).strict().optional(),
+  sourceArchitectureHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 }).strict();
 export const benchmarkCaseSchema = z.object({
   id,
@@ -16,6 +32,7 @@ export const benchmarkCaseSchema = z.object({
     z.object({ type: z.literal('exact_match'), expected: z.string().max(20000) }).strict(),
     z.object({ type: z.literal('contains_all'), expected: z.array(z.string().min(1).max(2000)).min(1).max(30) }).strict(),
     z.object({ type: z.literal('json_exact'), expected: z.json() }).strict(),
+    nodeTestsSchema,
   ]),
 }).strict();
 export const runRequestSchema = z.object({
@@ -66,6 +83,7 @@ export interface BenchmarkResult {
     gpuUsagePercent: null;
   };
   evaluator: { passed: boolean; checks: { name: string; passed: boolean }[] } | null;
+  caseEvidence: { caseId: string; status: 'COMPLETED' | 'TIMEOUT' | 'ERROR'; buildSucceeded: boolean; tests: { passed: number; failed: number; skipped: number }; buildExitStatus: number | null; testExitStatus: number | null } | null;
   output: string | null;
   agents: { model: string; role: string; output: string; elapsedMs: number }[];
   provenance: {
@@ -75,6 +93,8 @@ export interface BenchmarkResult {
     fixtureHash: string;
     architectureHash: string;
     runnerHash: string;
+    sourceArchitectureHash: string | null;
+    maxTokensPerAgent: number;
     timeoutSeconds: number;
     resources: { cpu: number; memory: number; disk: number } | null;
     inference: 'local-llama.cpp';
@@ -109,4 +129,12 @@ export const executionSchema = z.object({
 export const evaluationSchema = z.object({
   passed: z.boolean(),
   checks: z.array(z.object({ name: z.string(), passed: z.boolean() })).min(1),
+  caseEvidence: z.object({
+    caseId: id,
+    status: z.enum(['COMPLETED', 'TIMEOUT', 'ERROR']),
+    buildSucceeded: z.boolean(),
+    tests: z.object({ passed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), skipped: z.number().int().nonnegative() }),
+    buildExitStatus: z.number().int().nullable(),
+    testExitStatus: z.number().int().nullable(),
+  }).optional(),
 });

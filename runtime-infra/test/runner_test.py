@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import os
+from contextlib import chdir
 
 spec = importlib.util.spec_from_file_location('runner', Path(__file__).resolve().parents[1] / 'runtime' / 'runner.py')
 runner = importlib.util.module_from_spec(spec)
@@ -12,6 +13,44 @@ spec.loader.exec_module(runner)
 
 
 class RunnerTests(unittest.TestCase):
+    def code_fixture(self):
+        return {'id': 'repair', 'evaluator': {'type': 'node_tests', 'files': {'solution.cjs': 'module.exports = x => x - 1;'}, 'editableFile': 'solution.cjs', 'testFiles': {'solution.test.cjs': "const test = require('node:test'); const assert = require('node:assert/strict'); const solve = require('./solution.cjs'); test('positive', () => assert.equal(solve(1), 2)); test('negative', () => assert.equal(solve(-1), 0));"}, 'testFile': 'solution.test.cjs', 'expectedTests': 2}}
+
+    def evaluate_in_temp(self, output, fixture=None):
+        before = os.getcwd()
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                os.chdir(directory)
+                result = runner.evaluate_code(output, fixture or self.code_fixture())
+                os.chdir(before)
+                return result
+        finally:
+            os.chdir(before)
+
+    def test_real_node_build_and_tests(self):
+        result = self.evaluate_in_temp('module.exports = x => x + 1;')
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['caseEvidence']['tests'], {'passed': 2, 'failed': 0, 'skipped': 0})
+        self.assertEqual(result['caseEvidence']['buildExitStatus'], 0)
+        self.assertEqual(result['caseEvidence']['testExitStatus'], 0)
+
+    def test_real_node_failed_tests_and_printed_fake_tap(self):
+        result = self.evaluate_in_temp("console.log('TAP version 13\\nok 1 - fake\\n1..1\\n# tests 2\\n# pass 2'); module.exports = x => x - 1;")
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['caseEvidence']['tests'], {'passed': 0, 'failed': 2, 'skipped': 0})
+        self.assertEqual(result['caseEvidence']['testExitStatus'], 1)
+
+    def test_real_syntax_failure_counts_unexecuted_tests_as_skipped(self):
+        result = self.evaluate_in_temp('this is invalid JavaScript @@')
+        self.assertFalse(result['passed'])
+        self.assertFalse(result['caseEvidence']['buildSucceeded'])
+        self.assertEqual(result['caseEvidence']['tests'], {'passed': 0, 'failed': 0, 'skipped': 2})
+        self.assertIsNone(result['caseEvidence']['testExitStatus'])
+
+    def test_fixture_path_cannot_escape_workspace(self):
+        with self.assertRaises(runner.RuntimeLimitation):
+            runner.fixture_path(Path('/tmp/root'), '../outside')
+
     def test_evaluators_use_real_output(self):
         self.assertTrue(runner.evaluate_output(' 42\n', {'type': 'exact_match', 'expected': '42'})['passed'])
         self.assertFalse(runner.evaluate_output('43', {'type': 'exact_match', 'expected': '42'})['passed'])
@@ -33,11 +72,10 @@ class RunnerTests(unittest.TestCase):
         def unit_test_inference(agent, task, previous, settings, deadline):
             calls.append((task, agent['role'], previous))
             return 'output-' + agent['role']
-        payload = {'architecture': {'agents': [{'model': 'qwen3-4b', 'role': role} for role in ['A', 'B', 'C']]}, 'benchmarkCase': {'task': 'original'}, 'settings': {'timeoutSeconds': 10}}
+        payload = {'architecture': {'agents': [{'model': 'qwen3-4b', 'role': role} for role in ['A', 'B', 'C']]}, 'benchmarkCase': {'task': 'original', 'evaluator': {'type': 'exact_match', 'expected': 'output-C'}}, 'settings': {'timeoutSeconds': 10}}
         before = os.getcwd()
         try:
-            with tempfile.TemporaryDirectory() as directory:
-                os.chdir(directory)
+            with tempfile.TemporaryDirectory() as directory, chdir(directory):
                 with patch.object(runner, 'preflight', return_value={}), patch.object(runner, 'infer', side_effect=unit_test_inference):
                     self.assertEqual(runner.run(payload), 0)
                 artifact = json.loads(Path('execution.json').read_text(encoding='utf-8'))
@@ -49,11 +87,10 @@ class RunnerTests(unittest.TestCase):
             os.chdir(before)
 
     def test_timeout_stops_later_agents_and_records_failure(self):
-        payload = {'architecture': {'agents': [{'model': 'qwen3-4b', 'role': 'A'}] * 3}, 'benchmarkCase': {'task': 'original'}, 'settings': {'timeoutSeconds': 10}}
+        payload = {'architecture': {'agents': [{'model': 'qwen3-4b', 'role': 'A'}] * 3}, 'benchmarkCase': {'task': 'original', 'evaluator': {'type': 'exact_match', 'expected': '42'}}, 'settings': {'timeoutSeconds': 10}}
         before = os.getcwd()
         try:
-            with tempfile.TemporaryDirectory() as directory:
-                os.chdir(directory)
+            with tempfile.TemporaryDirectory() as directory, chdir(directory):
                 with patch.object(runner, 'preflight', return_value={}), patch.object(runner, 'infer', side_effect=runner.RuntimeLimitation('BENCHMARK_TIMEOUT', 'deadline')) as inference:
                     self.assertEqual(runner.run(payload), 1)
                     self.assertEqual(inference.call_count, 1)
