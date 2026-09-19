@@ -13,7 +13,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
-    "test": "tsc -p tsconfig.test.json && node --test \".test-build/tests/*.test.js\"",
+    "test": "tsc -p tsconfig.test.json && node --test \".test-build/tests/*.node-test.js\"",
     "start": "node dist/server.js"
   },
   "engines": { "node": ">=22" },

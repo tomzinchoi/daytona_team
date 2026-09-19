@@ -37,11 +37,12 @@ export function screenArchitectures(workload: Workload, candidates: Architecture
     const budget = architecture.compute.maxOutputTokensPerAgent;
     quality += Math.max(-0.12, Math.min(0.015, Math.log2(budget / 768) * 0.05));
     const expectedTokens = Math.min(budget, 220 + budget * 0.16);
-    const caseMs = models.reduce((sum, model) => sum + expectedTokens / model.speedTokensPerSecond * 1000 + 200, 0);
+    const throughputScale = Math.sqrt(architecture.compute.requestedCpuCores / 4);
+    const caseMs = models.reduce((sum, model) => sum + expectedTokens / (model.speedTokensPerSecond * throughputScale) * 1000 + 200, 0);
     if (caseMs > architecture.compute.timeoutMsPerCase) quality *= architecture.compute.timeoutMsPerCase / caseMs;
     quality = Math.max(0, Math.min(1, quality));
     const latencyMs = caseMs * workload.cases.length;
-    const relativeCompute = models.reduce((sum, model) => sum + expectedTokens * model.memoryMb / 6144, 0) * workload.cases.length;
+    const relativeCompute = latencyMs / 1000 * architecture.compute.requestedCpuCores;
     return {
       id: `prediction:${architecture.id}`, kind: "PREDICTED", workloadId: workload.id, workloadVersion: workload.version,
       workloadFingerprint: fingerprint, architecture: structuredClone(architecture),
@@ -54,7 +55,8 @@ export function screenArchitectures(workload: Workload, candidates: Architecture
       screeningScore: 0,
       assumptions: [
         "All values are PREDICTED screening heuristics, not benchmark evidence or dollar costs.",
-        "Compute variants change token/time budgets; physical hardware is provider-managed and must be recorded by the executor.",
+        "Compute variants request CPU/RAM plus token/time budgets. Provider availability is unverified; the executor must honor or reject the request and record actual hardware.",
+        "Throughput uses a hypothetical square-root CPU scaling rule. Relative compute is predicted allocated CPU-seconds, not measured CPU utilization or billed cost.",
         "Serial model calls; predicted peak memory assumes prior models can be unloaded. Hosting may use more memory.",
         "Profiles are uncalibrated hypotheses. This ranking is specific to this tiny coding workload and candidate set.",
       ],

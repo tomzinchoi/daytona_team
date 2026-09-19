@@ -2,9 +2,9 @@ import type { AgentSpec, Architecture, ComputeConfig, ModelId, Workload } from "
 import { validateWorkload } from "./validation.js";
 
 const COMPUTE_CONFIGS: ComputeConfig[] = [
-  { id: "compact", maxOutputTokensPerAgent: 384, timeoutMsPerCase: 20000, maxConcurrentCases: 1, modelHosting: "PROVIDER_MANAGED" },
-  { id: "standard", maxOutputTokensPerAgent: 768, timeoutMsPerCase: 40000, maxConcurrentCases: 1, modelHosting: "PROVIDER_MANAGED" },
-  { id: "extended", maxOutputTokensPerAgent: 1536, timeoutMsPerCase: 80000, maxConcurrentCases: 1, modelHosting: "PROVIDER_MANAGED" },
+  { id: "compact", requestedCpuCores: 2, requestedMemoryMb: 12288, accelerator: "CPU_ONLY", maxOutputTokensPerAgent: 384, timeoutMsPerCase: 20000, maxConcurrentCases: 1, modelHosting: "PROVIDER_MANAGED" },
+  { id: "standard", requestedCpuCores: 4, requestedMemoryMb: 16384, accelerator: "CPU_ONLY", maxOutputTokensPerAgent: 768, timeoutMsPerCase: 40000, maxConcurrentCases: 1, modelHosting: "PROVIDER_MANAGED" },
+  { id: "extended", requestedCpuCores: 8, requestedMemoryMb: 16384, accelerator: "CPU_ONLY", maxOutputTokensPerAgent: 1536, timeoutMsPerCase: 80000, maxConcurrentCases: 1, modelHosting: "PROVIDER_MANAGED" },
 ];
 
 const ROLE_INSTRUCTIONS: Record<AgentSpec["role"], string> = {

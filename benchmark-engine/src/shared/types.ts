@@ -65,7 +65,10 @@ export interface ArchitectureTopology {
 
 export interface ComputeConfig {
   id: "compact" | "standard" | "extended";
-  /** Inference budgets, not a claim about available hardware. */
+  /** Requested execution resources; the provider must honor or reject these. */
+  requestedCpuCores: number;
+  requestedMemoryMb: number;
+  accelerator: "CPU_ONLY";
   maxOutputTokensPerAgent: number;
   timeoutMsPerCase: number;
   maxConcurrentCases: 1;

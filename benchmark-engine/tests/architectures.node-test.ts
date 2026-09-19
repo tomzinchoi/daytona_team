@@ -9,6 +9,7 @@ test("generates exactly 15 deterministic, unique configurations across A–E", (
   assert.deepEqual(generateArchitectures(DEMO_WORKLOAD), candidates);
   for (const family of ["A", "B", "C", "D", "E"]) assert.equal(candidates.filter((entry) => entry.family === family).length, 3);
   assert.equal(new Set(candidates.map((entry) => entry.compute.maxOutputTokensPerAgent)).size, 3);
+  assert.deepEqual(new Set(candidates.map((entry) => entry.compute.requestedCpuCores)), new Set([2, 4, 8]));
 });
 
 test("single-model candidates include both Qwen and DeepSeek without forced reviewers", () => {

@@ -86,6 +86,9 @@ export function validateArchitecture(value: unknown): asserts value is Architect
   requireInput(value.outputAgentId === ids[ids.length - 1], "outputAgentId must be the last agent");
   record(value.compute, "compute");
   requireInput(["compact", "standard", "extended"].includes(value.compute.id as string), "Unknown compute configuration");
+  integer(value.compute.requestedCpuCores, "requestedCpuCores", 1, 64);
+  integer(value.compute.requestedMemoryMb, "requestedMemoryMb", 1024, 262144);
+  requireInput(value.compute.accelerator === "CPU_ONLY", "MVP compute configurations request CPU_ONLY execution");
   integer(value.compute.maxOutputTokensPerAgent, "maxOutputTokensPerAgent", 1, 65536);
   integer(value.compute.timeoutMsPerCase, "timeoutMsPerCase", 1, 600000);
   requireInput(value.compute.maxConcurrentCases === 1 && value.compute.modelHosting === "PROVIDER_MANAGED", "MVP requires sequential cases and provider-managed model hosting");
