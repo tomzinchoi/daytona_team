@@ -64,7 +64,7 @@ test('provider labels are Korean while transport status values remain unchanged'
   await page.route('**/runtime/api/providers',route=>route.fulfill({json:{providers:[{id:'daytona',status:'LIVE',reason:'연결 확인됨'},{id:'nosana',status:'NOT_CONFIGURED',reason:'미설정'},{id:'dnsimple',status:'ERROR',reason:'조회 오류'}]}}));
   await page.goto('/');await page.getByRole('button',{name:'인프라 상태 07'}).click();await page.getByRole('button',{name:'연결 상태 확인'}).click();
   await expect(page.locator('.provider-card').first()).toContainText('연결됨');await expect(page.locator('.provider-card').nth(2)).toContainText('오류');
-  await page.route('**/runtime/api/providers',route=>route.fulfill({status:503}));await page.getByRole('button',{name:'연결 상태 확인'}).click();await expect(page.locator('.provider-card').first()).toContainText('연결 안 됨');
+  await page.route('**/runtime/api/providers',route=>route.fulfill({status:503}));await page.getByRole('button',{name:'연결 상태 확인'}).click();await expect(page.locator('.provider-card').first()).toContainText('조회 실패');
 });
 test('mobile comparison scrolls internally without page overflow',async({page})=>{
   await page.setViewportSize({width:390,height:844});await page.goto('/');await results(page);

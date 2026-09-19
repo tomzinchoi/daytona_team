@@ -78,6 +78,7 @@ export default function App() {
   const [workload, setWorkload] = useState("");
   const [files, setFiles] = useState<WorkloadFile[]>([]);
   const [readingFiles, setReadingFiles] = useState(false);
+  const [uploadGeneration, setUploadGeneration] = useState(0);
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot);
   const [selectedId, setSelectedId] = useState("");
   const [production, setProduction] = useState<Configuration | null>(null);
@@ -90,6 +91,8 @@ export default function App() {
     ProviderReport[] | null
   >(null);
   const [providerError, setProviderError] = useState("");
+  const [providerBusy, setProviderBusy] = useState(false);
+  const providerRequest = useRef(false);
   const generation = useRef(0);
   useEffect(() => {
     if (!showProtocol) return;
@@ -149,6 +152,9 @@ export default function App() {
   }));
 
   async function refreshProviders() {
+    if (providerRequest.current) return;
+    providerRequest.current = true;
+    setProviderBusy(true);
     setProviderError("");
     try {
       setProviderReports(await getProviderReports());
@@ -157,7 +163,16 @@ export default function App() {
       setProviderError(
         "런타임 상태를 조회할 수 없습니다. 실행 서비스 연결을 확인해 주세요.",
       );
+    } finally {
+      providerRequest.current = false;
+      setProviderBusy(false);
     }
+  }
+  function providerLabel(report?: ProviderReport) {
+    if (providerBusy) return "확인 중…";
+    if (providerError) return "조회 실패";
+    if (!report) return providerReports ? "상태 없음" : "확인 전";
+    return report.status === "LIVE" ? "연결됨" : report.status === "ERROR" ? "오류" : "연결 안 됨";
   }
   async function beginEngine() {
     const token = ++generation.current;
@@ -167,7 +182,6 @@ export default function App() {
       const result = await searchEngineExample();
       if (token !== generation.current) return;
       setSnapshot(result);
-      setWorkload(result.workload);
       setSelectedId(result.configurations[0].id);
       setProduction(null);
       setRunStarted(true);
@@ -190,7 +204,7 @@ export default function App() {
         const next = await benchmarkApi.get(snapshot.id);
         if (cancelled || token !== generation.current) return;
         setSnapshot(next);
-        if (next.phase === "results") setScreen("results");
+        if (next.phase === "results") setScreen(current => current === "benchmark" ? "results" : current);
         else timer = setTimeout(poll, 2000);
       } catch (e) {
         if (!cancelled && token === generation.current) {
@@ -227,7 +241,6 @@ export default function App() {
         : await benchmarkApi.create(value);
       if (token !== generation.current) return;
       setSnapshot(result);
-      setWorkload(value);
       setRunStarted(true);
       setSelectedId(
         result.configurations.find((c) => c.selectedForBenchmark)?.id ??
@@ -293,6 +306,8 @@ export default function App() {
     setProduction(null);
     setWorkload("");
     setFiles([]);
+    setUploadGeneration(value => value + 1);
+    setReadingFiles(false);
     setError("");
     setBusy(false);
     setPollingStopped(false);
@@ -390,9 +405,7 @@ export default function App() {
             <span className="status-dot" />
             <span> Daytona 런타임 </span>
             <small>
-              {providerReports?.find((p) => p.id === "daytona")?.status === "LIVE"
-                ? "연결됨"
-                : "확인 전"}
+              {providerLabel(providerReports?.find((p) => p.id === "daytona"))}
             </small>
           </div>
           <p> 추측은 줄이고, <br /> 더 나은 구성을 선택하세요. </p>
@@ -485,7 +498,7 @@ export default function App() {
                       placeholder="수행할 작업, 원하는 결과, 성공 기준을 입력하세요…"
                       maxLength={100000}
                     />
-                    <WorkloadUpload files={files} onChange={setFiles} onReading={setReadingFiles} />
+                    <WorkloadUpload key={uploadGeneration} files={files} onChange={setFiles} onReading={setReadingFiles} />
                     <button
                       className="button primary full"
                       type="submit"
@@ -876,8 +889,9 @@ export default function App() {
                 </p>
                 <button
                   className="button secondary"
+                  disabled={providerBusy}
                   onClick={() => void refreshProviders()}
-                > 연결 상태 확인 <Radio size={14} />
+                > {providerBusy ? "연결 확인 중…" : "연결 상태 확인"} <Radio size={14} />
                 </button>
               </div>
               <section className="provider-grid">
@@ -885,7 +899,7 @@ export default function App() {
                   const report = providerReports?.find(
                     (r) => r.id.toLowerCase() === p.name.toLowerCase(),
                   );
-                  const connected = report?.status === "LIVE";
+                  const connected = !providerBusy && !providerError && report?.status === "LIVE";
                   return (
                     <article className="provider-card panel" key={p.name}>
                       <span className="provider-logo">
@@ -897,11 +911,7 @@ export default function App() {
                         className={`badge ${connected ? "api" : "offline"}`}
                       >
                         <span className="status-dot" />
-                        {connected
-                          ? "연결됨"
-                          : report?.status === "ERROR"
-                            ? "오류"
-                            : "연결 안 됨"}
+                        {providerLabel(report)}
                       </span>
                       <p>
                         {report?.reason ??

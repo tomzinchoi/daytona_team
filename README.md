@@ -2,6 +2,8 @@
 
 A frontend workbench for comparing Model × Agent Architecture × Compute on a recurring workload. React, TypeScript, Vite, and Three.js. No Daytona SDK calls or optimization algorithms are implemented in the frontend.
 
+Implementation audit and remaining integration work: [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md). Recent workbench bug fixes and verification: [WORKBENCH_FIXES.md](./WORKBENCH_FIXES.md).
+
 ## Run
 
 ```sh
@@ -23,7 +25,7 @@ The root package is the frontend. `benchmark-engine/`, `runtime-infra/`, and `no
 6. Review **Selected Production Configuration**, then export its JSON. Selection is in-memory for this session; export does not deploy infrastructure.
 7. Open **Providers** to see connection status. **Check runtime connections** reads the real runtime API. Unverified or unavailable connections never appear live.
 
-All synthetic business data lives in **`src/data/demo.ts`**. No synthetic benchmark values are scattered through components. Demo evidence always carries a **DEMO** label, even where the demonstrated evidence state is **MEASURED**. The quality example is exactly passed test assertions / total assertions × 100, with equal assertion weights. vCPU-min values are explicitly resource estimates, not billing costs.
+All synthetic business data lives in **`src/data/demo.ts`**. No synthetic benchmark values are scattered through components. Demo results use **illustrative** evidence and cannot use the **measured** label. The initial screen has no results; synthetic metrics require explicitly opening the demo. The quality example is exactly passed test assertions / total assertions × 100, with equal assertion weights. vCPU-min values are explicitly resource estimates, not billing costs.
 
 ## Screens and components
 
