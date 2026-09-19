@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import BenchmarkSpace from "./components/BenchmarkSpace";
 import LiveHumanEval from './components/LiveHumanEval';
+import LivePerformance, { type LiveRun } from './components/LivePerformance';
 import { ACTIVE_MODELS, isActiveModel } from './active-models';
 import AnalysisProgress from "./components/AnalysisProgress";
 import WorkloadUpload from "./components/WorkloadUpload";
@@ -91,6 +92,7 @@ export default function App() {
   const [readingFiles, setReadingFiles] = useState(false);
   const [uploadGeneration, setUploadGeneration] = useState(0);
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot);
+  const [liveRun, setLiveRun] = useState<LiveRun | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [production, setProduction] = useState<Configuration | null>(null);
   const [busy, setBusy] = useState(false);
@@ -326,6 +328,7 @@ export default function App() {
     generation.current++;
     history.replaceState(null, "", location.pathname);
     setSnapshot(emptySnapshot());
+    setLiveRun(null);
     setSelectedId("");
     setScreen("workload");
     setRunStarted(false);
@@ -348,6 +351,7 @@ export default function App() {
       id === "workload" ||
       id === "humaneval" ||
       id === "providers" ||
+      (id === "results" && Boolean(liveRun?.rows.length) && ['completed', 'failed'].includes(liveRun!.status)) ||
       (id === "selection" && Boolean(production)) ||
       (runStarted &&
         (id === "search" ||
@@ -507,7 +511,7 @@ export default function App() {
           {screen === "execution" && <Suspense fallback={<p role="status">작업 화면을 불러오는 중…</p>}><SelectedModelTask key={taskModel} modelId={taskModel} initialWorkload={taskInput} onBack={() => setScreen('humaneval')} /></Suspense>}
           {screen === "workload" && (
             <>
-              <LiveHumanEval />
+              <LiveHumanEval key={uploadGeneration} onResult={setLiveRun} />
               <div className="workload-grid">
                 <section className="workload-card panel">
                   <div className="section-number"> 01 / 워크로드 입력 </div>
@@ -781,7 +785,8 @@ export default function App() {
             </>
           )}
 
-          {(screen === "results" || screen === "recommendations") && selected && (
+          {screen === "results" && liveRun && liveRun.rows.length > 0 && <LivePerformance run={liveRun} />}
+          {(screen === "results" || screen === "recommendations") && selected && !liveRun?.rows.length && (
             <>
               <div className="results-grid">
                 <BenchmarkSpace
